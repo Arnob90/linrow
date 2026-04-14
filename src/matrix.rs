@@ -1,8 +1,8 @@
+use crate::constants::EPSILON;
 use crate::row::Row;
 use std::fmt::Display;
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, Mul};
 use thiserror::Error;
-const EPSILON: f64 = 1e-12;
 #[derive(Debug)]
 pub struct Matrix {
     rows: Vec<Row>,
@@ -128,6 +128,31 @@ impl Matrix {
     }
 }
 
+impl Mul<Row> for Matrix {
+    type Output = Row;
+    fn mul(self, rhs: Row) -> Self::Output {
+        let (rows_len, columns_len) = self.get_dimensions();
+        assert_eq!(
+            columns_len,
+            rhs.columns.len(),
+            "Cannot multiply: Matrix has {} columns but Row has {} columns",
+            columns_len,
+            rhs.columns.len()
+        );
+        let mut result_columns = vec![0.0; rows_len];
+        for row_idx in 0..rows_len {
+            let mut sum = 0.0;
+            for col_idx in 0..columns_len {
+                sum += self[row_idx][col_idx] * rhs[col_idx];
+            }
+            result_columns[row_idx] = sum;
+        }
+        Row {
+            columns: result_columns,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*; // Import your Matrix, Row, and EPSILON
@@ -244,5 +269,31 @@ mod tests {
         let expected = vec![vec![1.0, 0.0, 1.0], vec![0.0, 1.0, 2.0]];
 
         assert_matrix_eq(&m, expected);
+    }
+    #[test]
+    fn test_rref_identity_matrix() {
+        let mut m = Matrix::new(vec![vec![1.0, 0.0], vec![0.0, 1.0]]).unwrap();
+
+        m.reduced_row_echelon();
+
+        let expected = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
+
+        assert_matrix_eq(&m, expected);
+    }
+    #[test]
+    fn test_matrix_vector_multiplication() {
+        let m = Matrix::new(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]).unwrap();
+
+        let v = vec![7.0, 8.0, 9.0];
+        let row = Row { columns: v };
+        let result = m * row;
+
+        let expected = vec![
+            1.0 * 7.0 + 2.0 * 8.0 + 3.0 * 9.0, // 50.0
+            4.0 * 7.0 + 5.0 * 8.0 + 6.0 * 9.0, // 122.0
+        ];
+        let expected_row = Row { columns: expected };
+
+        assert_eq!(result, expected_row);
     }
 }
