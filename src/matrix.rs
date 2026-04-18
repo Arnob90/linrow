@@ -1,5 +1,7 @@
 use crate::constants::EPSILON;
-use crate::row::Row;
+use crate::impl_forward_ref_binop;
+use crate::row::{Row, dot_product};
+use rayon::prelude::*;
 use std::fmt::Display;
 use std::ops::{Index, IndexMut, Mul};
 use thiserror::Error;
@@ -379,7 +381,7 @@ impl Matrix {
     }
 }
 
-impl Mul<Row> for Matrix {
+impl Mul<&Row> for &Matrix {
     type Output = Row;
     /// Performs matrix-vector multiplication.
     ///
@@ -412,65 +414,64 @@ impl Mul<Row> for Matrix {
     ///
     /// let v = Row::new(vec![7.0, 8.0, 9.0]);
     /// let result = m * v;
-    ///
-    /// assert_eq!(result, Row::new(vec![50.0, 122.0]));
-    /// ```
-    fn mul(self, rhs: Row) -> Self::Output {
-        let (rows_len, columns_len) = self.get_dimensions();
-        assert_eq!(
-            columns_len,
-            rhs.row_elems.len(),
-            "Cannot multiply: Matrix has {} columns but Row has {} columns",
-            columns_len,
-            rhs.row_elems.len()
-        );
-        let mut result_columns = vec![0.0; rows_len];
-        for row_idx in 0..rows_len {
-            let mut sum = 0.0;
-            for col_idx in 0..columns_len {
-                sum += self[row_idx][col_idx] * rhs[col_idx];
-            }
-            result_columns[row_idx] = sum;
+    /// assert_eq!(result, Row::new(vec![50.0, 122.0])); ```
+    fn mul(self, rhs: &Row) -> Self::Output {
+        let (rows_len, _) = self.get_dimensions();
+        let mut row: Row = Row::new(vec![]);
+        for i in 0..rows_len {
+            row.row_elems.push(dot_product(&self[i], &rhs).expect(
+                "The column of given matrix is not equal to the dimension of the given vector",
+            ));
         }
-        Row {
-            row_elems: result_columns,
-        }
+        row
     }
 }
-fn generate_identiy_vectors(dimension: usize) -> Vec<Row> {
-    let mut required_vecs: Vec<Row> = vec![Row::new(vec![0.0; dimension]); dimension];
-    for i in 0..dimension {
-        required_vecs[i][i] = 1.0;
+impl_forward_ref_binop!(Mul, mul, Matrix, Row, Row);
+pub fn transpose(given_column_matrix: &Matrix) -> Matrix {
+    //We guarantee that matrices are nonempty
+    let number_of_cols = given_column_matrix[0].row_elems.len();
+    let number_of_rows = given_column_matrix.rows.len();
+    let row_elem = vec![0.0; number_of_rows];
+    let mut required_matrix = Matrix::new(vec![row_elem; number_of_cols]).unwrap();
+    for i in 0..number_of_cols {
+        for j in 0..number_of_rows {
+            required_matrix[i][j] = given_column_matrix[j][i]
+        }
     }
-    required_vecs
+    required_matrix
 }
 
 impl Mul<Matrix> for Matrix {
     type Output = Matrix;
     fn mul(self, rhs: Matrix) -> Self::Output {
         let (_, lhs_col_len) = self.get_dimensions();
-        let (rhs_row_len, rhs_col_len) = rhs.get_dimensions();
+        let (rhs_row_len, _) = rhs.get_dimensions();
         assert_eq!(
             rhs_row_len, lhs_col_len,
             "Row number of RHS must match col number of LHS"
         );
-        let identity_vecs = generate_identiy_vectors(rhs_col_len);
-        let matrix_cols: Vec<Row> = identity_vecs
-            .into_iter()
-            .map(|vec| self.clone() * (rhs.clone() * vec))
+        let col_matrix = transpose(&rhs);
+
+        let result_rows: Vec<Vec<f64>> = self
+            .rows
+            .par_iter()
+            .map(|row| {
+                col_matrix
+                    .rows
+                    .iter()
+                    .map(|col| dot_product(row, col).unwrap())
+                    .collect()
+            })
             .collect();
-        if matrix_cols.is_empty() {
-            return Matrix::new(vec![]).unwrap();
-        }
-        let number_of_rows = matrix_cols.len();
-        let number_of_cols = matrix_cols[0].len();
-        let mut matrix_rows = vec![Row::new(vec![0.0; number_of_cols]); number_of_rows];
-        for col_num in 0..number_of_cols {
-            for row_num in 0..number_of_rows {
-                matrix_rows[col_num][row_num] = matrix_cols[row_num][col_num]
-            }
-        }
-        Matrix::from_rows(matrix_rows).unwrap()
+        //        for row in self.rows.iter() {
+        //            let result_row: Vec<f64> = col_matrix
+        //                .rows
+        //                .iter()
+        //                .map(|col| dot_product(row, col).unwrap())
+        //                .collect();
+        //            result_rows.push(result_row);
+        //        }
+        Matrix::new(result_rows).unwrap()
     }
 }
 
@@ -483,21 +484,6 @@ mod tests {
         ($a:expr, $b:expr) => {
             assert!(($a - $b).abs() < EPSILON, "Expected {}, got {}", $b, $a);
         };
-    }
-
-    // Helper function to compare two matrices
-    fn assert_matrix_eq(actual: &Matrix, expected: Vec<Vec<f64>>) {
-        let (rows, cols) = actual.get_dimensions();
-        assert_eq!(rows, expected.len(), "Row count mismatch");
-        if rows > 0 {
-            assert_eq!(cols, expected[0].len(), "Column count mismatch");
-        }
-
-        for r in 0..rows {
-            for c in 0..cols {
-                assert_f64_eq!(actual.rows[r].row_elems[c], expected[r][c]);
-            }
-        }
     }
 
     #[test]
@@ -516,13 +502,14 @@ mod tests {
 
         m.reduced_row_echelon();
 
-        let expected = vec![
+        let expected = Matrix::new(vec![
             vec![1.0, 0.0, 0.0, 2.0],
             vec![0.0, 1.0, 0.0, -1.0],
             vec![0.0, 0.0, 1.0, 3.0],
-        ];
+        ])
+        .unwrap();
 
-        assert_matrix_eq(&m, expected);
+        assert_eq!(m, expected);
     }
     #[test]
     fn test_rref_sympy_example() {
@@ -535,13 +522,14 @@ mod tests {
 
         m.reduced_row_echelon();
 
-        let expected = vec![
+        let expected = Matrix::new(vec![
             vec![1.0, 2.0, 0.0, 5.0, 0.0, -3.0],
             vec![0.0, 0.0, 1.0, -1.0, 0.0, -3.0],
             vec![0.0, 0.0, 0.0, 0.0, 1.0, 2.0],
-        ];
+        ])
+        .unwrap();
 
-        assert_matrix_eq(&m, expected);
+        assert_eq!(m, expected);
     }
     #[test]
     fn test_rref_dependent_rows() {
@@ -555,13 +543,14 @@ mod tests {
 
         m.reduced_row_echelon();
 
-        let expected = vec![
+        let expected = Matrix::new(vec![
             vec![1.0, 2.0, 3.0],
             vec![0.0, 0.0, 0.0],
             vec![0.0, 0.0, 0.0],
-        ];
+        ])
+        .unwrap();
 
-        assert_matrix_eq(&m, expected);
+        assert_eq!(m, expected);
     }
     #[test]
     fn test_rref_inconsistent_system() {
@@ -570,12 +559,13 @@ mod tests {
         m.reduced_row_echelon();
 
         // The bottom row will evaluate to 0 = 1
-        let expected = vec![
+        let expected = Matrix::new(vec![
             vec![1.0, 1.0, 0.0],
             vec![0.0, 0.0, 1.0], // 0x + 0y = 1
-        ];
+        ])
+        .unwrap();
 
-        assert_matrix_eq(&m, expected);
+        assert_eq!(m, expected);
     }
     #[test]
     fn test_rref_requires_row_swap() {
@@ -587,9 +577,9 @@ mod tests {
 
         m.reduced_row_echelon();
 
-        let expected = vec![vec![1.0, 0.0, 1.0], vec![0.0, 1.0, 2.0]];
+        let expected = Matrix::new(vec![vec![1.0, 0.0, 1.0], vec![0.0, 1.0, 2.0]]).unwrap();
 
-        assert_matrix_eq(&m, expected);
+        assert_eq!(m, expected);
     }
     #[test]
     fn test_rref_identity_matrix() {
@@ -597,9 +587,9 @@ mod tests {
 
         m.reduced_row_echelon();
 
-        let expected = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
+        let expected = Matrix::new(vec![vec![1.0, 0.0], vec![0.0, 1.0]]).unwrap();
 
-        assert_matrix_eq(&m, expected);
+        assert_eq!(m, expected);
     }
     #[test]
     fn test_matrix_vector_multiplication() {
@@ -640,5 +630,41 @@ mod tests {
         .unwrap();
 
         assert_eq!(result, expected);
+    }
+    #[test]
+    fn test_matrix_matrix_multiplication_rectangular() {
+        // 2x3 Matrix
+        let m1 = Matrix::new(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]).unwrap();
+
+        // 3x2 Matrix
+        let m2 = Matrix::new(vec![vec![7.0, 8.0], vec![9.0, 10.0], vec![11.0, 12.0]]).unwrap();
+
+        let result = m1 * m2;
+
+        // Result should be 2x2
+        let expected = Matrix::new(vec![
+            vec![
+                1.0 * 7.0 + 2.0 * 9.0 + 3.0 * 11.0,  // 58.0
+                1.0 * 8.0 + 2.0 * 10.0 + 3.0 * 12.0, // 64.0
+            ],
+            vec![
+                4.0 * 7.0 + 5.0 * 9.0 + 6.0 * 11.0,  // 139.0
+                4.0 * 8.0 + 5.0 * 10.0 + 6.0 * 12.0, // 154.0
+            ],
+        ])
+        .unwrap();
+
+        assert_eq!(result, expected);
+    }
+    #[test]
+    fn test_matrix_multiplication_identity() {
+        let m = Matrix::new(vec![vec![1.0, 2.0], vec![3.0, 4.0]]).unwrap();
+
+        let identity = Matrix::new(vec![vec![1.0, 0.0], vec![0.0, 1.0]]).unwrap();
+
+        let result = m.clone() * identity;
+
+        // A * I = A
+        assert_eq!(result, m);
     }
 }

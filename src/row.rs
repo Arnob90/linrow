@@ -1,6 +1,8 @@
+use crate::impl_forward_ref_assign_op;
 use derive_more::{Deref, DerefMut};
 use std::fmt::Display;
 use std::ops::{AddAssign, DivAssign, Mul, MulAssign, SubAssign};
+use thiserror::Error;
 /// Represents a single row in a matrix.
 ///
 /// A `Row` is essentially a wrapper around a `Vec<f64>`, providing
@@ -41,6 +43,22 @@ impl Row {
         Row { row_elems: columns }
     }
 }
+#[derive(Error, Debug)]
+pub enum DotProductError {
+    #[error("The vectors have different dimensions")]
+    DimensionMismatch,
+}
+pub fn dot_product(lhs: &Row, rhs: &Row) -> Result<f64, DotProductError> {
+    if lhs.row_elems.len() != rhs.row_elems.len() {
+        return Err(DotProductError::DimensionMismatch);
+    }
+    Ok(lhs
+        .iter()
+        .zip(rhs.iter())
+        .map(|(item1, item2)| item1 * item2)
+        .sum())
+}
+
 impl AddAssign<&Row> for Row {
     /// Performs in-place addition of another `Row` to this `Row`.
     ///
@@ -66,27 +84,17 @@ impl AddAssign<&Row> for Row {
     /// assert_eq!(r1, Row::new(vec![5.0, 7.0, 9.0]));
     /// ```
     fn add_assign(&mut self, rhs: &Row) {
-        for i in 0..self.row_elems.len() {
-            self.row_elems[i] += rhs.row_elems[i];
+        assert_eq!(
+            self.row_elems.len(),
+            rhs.row_elems.len(),
+            "Dimension mismatch"
+        );
+        for (a, b) in self.row_elems.iter_mut().zip(rhs.row_elems.iter()) {
+            *a += b
         }
     }
 }
-impl AddAssign<Row> for Row {
-    /// Performs in-place addition of another `Row` (by value) to this `Row`.
-    ///
-    /// This is a convenience implementation that delegates to `AddAssign<&Row>`.
-    ///
-    /// # Arguments
-    ///
-    /// * `rhs` - The `Row` to add.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the number of columns in `self` and `rhs` are not equal.
-    fn add_assign(&mut self, rhs: Row) {
-        *self += &rhs
-    }
-}
+impl_forward_ref_assign_op!(AddAssign, add_assign, Row, Row);
 
 impl Mul<f64> for Row {
     type Output = Row;
@@ -168,23 +176,7 @@ impl SubAssign<&Row> for Row {
         }
     }
 }
-
-impl SubAssign<Row> for Row {
-    /// Performs in-place subtraction of another `Row` (by value) from this `Row`.
-    ///
-    /// This is a convenience implementation that delegates to `SubAssign<&Row>`.
-    ///
-    /// # Arguments
-    ///
-    /// * `rhs` - The `Row` to subtract.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the number of columns in `self` and `rhs` are not equal.
-    fn sub_assign(&mut self, rhs: Row) {
-        *self -= &rhs
-    }
-}
+impl_forward_ref_assign_op!(SubAssign, sub_assign, Row, Row);
 
 impl DivAssign<f64> for Row {
     /// Performs in-place scalar division on this `Row`.
@@ -293,7 +285,6 @@ impl PartialEq for Row {
         self.iter().zip(other.row_elems.iter()).all(|(a, b)| a == b)
     }
 }
-
 mod tests {
     use super::*;
 

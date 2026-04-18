@@ -4,5 +4,6 @@
 //! such as creating matrices, performing row operations, and solving linear systems.
 
 mod constants;
+pub mod macros;
 pub mod matrix;
 pub mod row;

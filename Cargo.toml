@@ -1,10 +1,11 @@
 [package]
 name = "linrow"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "A matrix row reduction library"
 license = "MIT"
 
 [dependencies]
 derive_more = { version = "2.1.1", features = ["deref", "deref_mut"] }
+rayon = "1.12.0"
 thiserror = "2.0.18"
