@@ -22,7 +22,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-linrow = "0.1.0" # Or the latest version
+linrow = "0.2.0" # Or the latest version
 ```
 
 ## Usage
