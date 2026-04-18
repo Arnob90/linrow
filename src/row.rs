@@ -1,4 +1,3 @@
-use crate::constants::EPSILON;
 use derive_more::{Deref, DerefMut};
 use std::fmt::Display;
 use std::ops::{AddAssign, DivAssign, Mul, MulAssign, SubAssign};
@@ -14,14 +13,14 @@ use std::ops::{AddAssign, DivAssign, Mul, MulAssign, SubAssign};
 /// # Examples
 ///
 /// ```
-/// use matrix_solver_lib::row::Row;
+/// use linrow::row::Row;
 ///
 /// let row = Row::new(vec![1.0, 2.0, 3.0]);
 /// assert_eq!(row[0], 1.0);
 /// ```
 #[derive(Clone, Debug, Deref, DerefMut)]
 pub struct Row {
-    pub columns: Vec<f64>,
+    pub row_elems: Vec<f64>,
 }
 impl Row {
     /// Creates a new `Row` from a `Vec<f64>`.
@@ -33,13 +32,13 @@ impl Row {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::row::Row;
     ///
     /// let row = Row::new(vec![1.0, 2.0, 3.0]);
-    /// assert_eq!(row.columns, vec![1.0, 2.0, 3.0]);
+    /// assert_eq!(row.row_elems, vec![1.0, 2.0, 3.0]);
     /// ```
     pub fn new(columns: Vec<f64>) -> Self {
-        Row { columns }
+        Row { row_elems: columns }
     }
 }
 impl AddAssign<&Row> for Row {
@@ -59,7 +58,7 @@ impl AddAssign<&Row> for Row {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::row::Row;
     ///
     /// let mut r1 = Row::new(vec![1.0, 2.0, 3.0]);
     /// let r2 = Row::new(vec![4.0, 5.0, 6.0]);
@@ -67,8 +66,8 @@ impl AddAssign<&Row> for Row {
     /// assert_eq!(r1, Row::new(vec![5.0, 7.0, 9.0]));
     /// ```
     fn add_assign(&mut self, rhs: &Row) {
-        for i in 0..self.columns.len() {
-            self.columns[i] += rhs.columns[i];
+        for i in 0..self.row_elems.len() {
+            self.row_elems[i] += rhs.row_elems[i];
         }
     }
 }
@@ -102,7 +101,7 @@ impl Mul<f64> for Row {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::row::Row;
     ///
     /// let r1 = Row::new(vec![1.0, 2.0, 3.0]);
     /// let r2 = r1 * 2.0;
@@ -126,15 +125,15 @@ impl MulAssign<f64> for Row {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::row::Row;
     ///
     /// let mut r1 = Row::new(vec![1.0, 2.0, 3.0]);
     /// r1 *= 2.0;
     /// assert_eq!(r1, Row::new(vec![2.0, 4.0, 6.0]));
     /// ```
     fn mul_assign(&mut self, rhs: f64) {
-        for i in 0..self.columns.len() {
-            self.columns[i] *= rhs;
+        for i in 0..self.row_elems.len() {
+            self.row_elems[i] *= rhs;
         }
     }
 }
@@ -156,7 +155,7 @@ impl SubAssign<&Row> for Row {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::row::Row;
     ///
     /// let mut r1 = Row::new(vec![5.0, 7.0, 9.0]);
     /// let r2 = Row::new(vec![1.0, 2.0, 3.0]);
@@ -164,8 +163,8 @@ impl SubAssign<&Row> for Row {
     /// assert_eq!(r1, Row::new(vec![4.0, 5.0, 6.0]));
     /// ```
     fn sub_assign(&mut self, rhs: &Row) {
-        for i in 0..self.columns.len() {
-            self.columns[i] -= rhs.columns[i];
+        for i in 0..self.row_elems.len() {
+            self.row_elems[i] -= rhs.row_elems[i];
         }
     }
 }
@@ -203,7 +202,7 @@ impl DivAssign<f64> for Row {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::row::Row;
     ///
     /// let mut r1 = Row::new(vec![2.0, 4.0, 6.0]);
     /// r1 /= 2.0;
@@ -223,14 +222,14 @@ impl Display for Row {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::row::Row;
     ///
     /// let row = Row::new(vec![1.0, 2.0, 3.0]);
     /// assert_eq!(format!("{}", row), "[1,2,3]");
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[")?; // Start the bracket
-        for (i, col) in self.columns.iter().enumerate() {
+        for (i, col) in self.row_elems.iter().enumerate() {
             if i > 0 {
                 write!(f, ",")?; // Add comma before all but the first element
             }
@@ -249,7 +248,7 @@ impl IntoIterator for Row {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::row::Row;
     ///
     /// let row = Row::new(vec![1.0, 2.0, 3.0]);
     /// let mut sum = 0.0;
@@ -259,7 +258,7 @@ impl IntoIterator for Row {
     /// assert_eq!(sum, 6.0);
     /// ```
     fn into_iter(self) -> Self::IntoIter {
-        self.columns.into_iter()
+        self.row_elems.into_iter()
     }
 }
 impl PartialEq for Row {
@@ -276,7 +275,7 @@ impl PartialEq for Row {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::row::Row;
     ///
     /// let r1 = Row::new(vec![1.0, 2.0, 3.0]);
     /// let r2 = Row::new(vec![1.0, 2.0, 3.0]);
@@ -286,12 +285,12 @@ impl PartialEq for Row {
     /// assert_ne!(r1, r3);
     /// ```
     fn eq(&self, other: &Self) -> bool {
-        if self.columns.len() != other.columns.len() {
+        if self.row_elems.len() != other.row_elems.len() {
             return false;
         }
         // Direct comparison for f64, consider using an epsilon-based comparison for robustness
         // if floating point inaccuracies are a concern.
-        self.iter().zip(other.columns.iter()).all(|(a, b)| a == b)
+        self.iter().zip(other.row_elems.iter()).all(|(a, b)| a == b)
     }
 }
 
@@ -301,55 +300,55 @@ mod tests {
     #[test]
     fn test_row_addition() {
         let mut a = Row {
-            columns: vec![1.0, 2.0, 3.0],
+            row_elems: vec![1.0, 2.0, 3.0],
         };
         let b = Row {
-            columns: vec![4.0, 5.0, 6.0],
+            row_elems: vec![4.0, 5.0, 6.0],
         };
         a += &b;
-        assert_eq!(a.columns, vec![5.0, 7.0, 9.0]);
+        assert_eq!(a.row_elems, vec![5.0, 7.0, 9.0]);
     }
 
     #[test]
     fn test_row_subtraction() {
         let mut a = Row {
-            columns: vec![5.0, 7.0, 9.0],
+            row_elems: vec![5.0, 7.0, 9.0],
         };
         let b = Row {
-            columns: vec![1.0, 2.0, 3.0],
+            row_elems: vec![1.0, 2.0, 3.0],
         };
         a -= &b;
-        assert_eq!(a.columns, vec![4.0, 5.0, 6.0]);
+        assert_eq!(a.row_elems, vec![4.0, 5.0, 6.0]);
     }
 
     #[test]
     fn test_row_scalar_multiplication() {
         let mut a = Row {
-            columns: vec![1.0, 2.0, 3.0],
+            row_elems: vec![1.0, 2.0, 3.0],
         };
         a *= 2.0;
-        assert_eq!(a.columns, vec![2.0, 4.0, 6.0]);
+        assert_eq!(a.row_elems, vec![2.0, 4.0, 6.0]);
     }
 
     #[test]
     fn test_row_scalar_division() {
         let mut a = Row {
-            columns: vec![2.0, 4.0, 6.0],
+            row_elems: vec![2.0, 4.0, 6.0],
         };
         a /= 2.0;
-        assert_eq!(a.columns, vec![1.0, 2.0, 3.0]);
+        assert_eq!(a.row_elems, vec![1.0, 2.0, 3.0]);
     }
 
     #[test]
     fn test_row_equality() {
         let a = Row {
-            columns: vec![1.0, 2.0, 3.0],
+            row_elems: vec![1.0, 2.0, 3.0],
         };
         let b = Row {
-            columns: vec![1.0, 2.0, 3.0],
+            row_elems: vec![1.0, 2.0, 3.0],
         };
         let c = Row {
-            columns: vec![3.0, 2.0, 1.0],
+            row_elems: vec![3.0, 2.0, 1.0],
         };
         assert_eq!(a, b);
         assert_ne!(a, c);

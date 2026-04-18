@@ -11,7 +11,7 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use matrix_solver_lib::matrix::Matrix;
+/// use linrow::matrix::Matrix;
 ///
 /// let matrix_data = vec![
 ///     vec![1.0, 2.0, 3.0],
@@ -19,7 +19,7 @@ use thiserror::Error;
 /// ];
 /// let matrix = Matrix::new(matrix_data).unwrap();
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Matrix {
     rows: Vec<Row>,
 }
@@ -33,14 +33,14 @@ impl Display for Matrix {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::matrix::Matrix;
+    /// use linrow::matrix::Matrix;
     ///
     /// let matrix_data = vec![
     ///     vec![1.0, 2.0],
     ///     vec![3.0, 4.0],
     /// ];
     /// let matrix = Matrix::new(matrix_data).unwrap();
-    /// assert_eq!(format!("{}", matrix), "[[1, 2],[3, 4]]");
+    /// assert_eq!(format!("{}", matrix), "[[1,2],[3,4]]");
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[")?;
@@ -93,8 +93,8 @@ impl IndexMut<usize> for Matrix {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::matrix::Matrix;
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::matrix::Matrix;
+    /// use linrow::row::Row;
     ///
     /// let matrix_data = vec![
     ///     vec![1.0, 2.0],
@@ -129,7 +129,7 @@ impl Matrix {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::matrix::{Matrix, MatrixCreationError};
+    /// use linrow::matrix::{Matrix, MatrixCreationError};
     ///
     /// // Valid matrix
     /// let m1 = Matrix::new(vec![
@@ -171,9 +171,12 @@ impl Matrix {
         Ok(Matrix {
             rows: given_raw_matrix
                 .into_iter()
-                .map(|row| Row { columns: row })
+                .map(|row| Row { row_elems: row })
                 .collect(),
         })
+    }
+    pub fn from_rows(given_rows: Vec<Row>) -> Result<Self, MatrixCreationError> {
+        Self::new(given_rows.into_iter().map(|row| row.row_elems).collect())
     }
     pub fn swap_rows(&mut self, i: usize, j: usize) {
         self.rows.swap(i, j);
@@ -185,7 +188,7 @@ impl Matrix {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::matrix::Matrix;
+    /// use linrow::matrix::Matrix;
     ///
     /// let m1 = Matrix::new(vec![
     ///     vec![1.0, 2.0, 3.0],
@@ -200,7 +203,7 @@ impl Matrix {
         if self.rows.is_empty() {
             return (0, 0);
         }
-        (self.rows.len(), self.rows.first().unwrap().columns.len())
+        (self.rows.len(), self.rows.first().unwrap().row_elems.len())
     }
     /// Swaps two rows in the matrix.
     ///
@@ -216,8 +219,8 @@ impl Matrix {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::matrix::Matrix;
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::matrix::Matrix;
+    /// use linrow::row::Row;
     ///
     /// let mut m = Matrix::new(vec![
     ///     vec![1.0, 2.0],
@@ -297,7 +300,7 @@ impl Matrix {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::matrix::Matrix;
+    /// use linrow::matrix::Matrix;
     ///
     /// let mut m = Matrix::new(vec![
     ///     vec![1.0, 2.0, -1.0, -4.0],
@@ -347,7 +350,7 @@ impl Matrix {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::matrix::Matrix;
+    /// use linrow::matrix::Matrix;
     ///
     /// let mut m = Matrix::new(vec![
     ///     vec![1.0, 2.0, 3.0, 9.0],
@@ -399,8 +402,8 @@ impl Mul<Row> for Matrix {
     /// # Examples
     ///
     /// ```
-    /// use matrix_solver_lib::matrix::Matrix;
-    /// use matrix_solver_lib::row::Row;
+    /// use linrow::matrix::Matrix;
+    /// use linrow::row::Row;
     ///
     /// let m = Matrix::new(vec![
     ///     vec![1.0, 2.0, 3.0],
@@ -416,10 +419,10 @@ impl Mul<Row> for Matrix {
         let (rows_len, columns_len) = self.get_dimensions();
         assert_eq!(
             columns_len,
-            rhs.columns.len(),
+            rhs.row_elems.len(),
             "Cannot multiply: Matrix has {} columns but Row has {} columns",
             columns_len,
-            rhs.columns.len()
+            rhs.row_elems.len()
         );
         let mut result_columns = vec![0.0; rows_len];
         for row_idx in 0..rows_len {
@@ -430,8 +433,44 @@ impl Mul<Row> for Matrix {
             result_columns[row_idx] = sum;
         }
         Row {
-            columns: result_columns,
+            row_elems: result_columns,
         }
+    }
+}
+fn generate_identiy_vectors(dimension: usize) -> Vec<Row> {
+    let mut required_vecs: Vec<Row> = vec![Row::new(vec![0.0; dimension]); dimension];
+    for i in 0..dimension {
+        required_vecs[i][i] = 1.0;
+    }
+    required_vecs
+}
+
+impl Mul<Matrix> for Matrix {
+    type Output = Matrix;
+    fn mul(self, rhs: Matrix) -> Self::Output {
+        let (_, lhs_col_len) = self.get_dimensions();
+        let (rhs_row_len, rhs_col_len) = rhs.get_dimensions();
+        assert_eq!(
+            rhs_row_len, lhs_col_len,
+            "Row number of RHS must match col number of LHS"
+        );
+        let identity_vecs = generate_identiy_vectors(rhs_col_len);
+        let matrix_cols: Vec<Row> = identity_vecs
+            .into_iter()
+            .map(|vec| self.clone() * (rhs.clone() * vec))
+            .collect();
+        if matrix_cols.is_empty() {
+            return Matrix::new(vec![]).unwrap();
+        }
+        let number_of_rows = matrix_cols.len();
+        let number_of_cols = matrix_cols[0].len();
+        let mut matrix_rows = vec![Row::new(vec![0.0; number_of_cols]); number_of_rows];
+        for col_num in 0..number_of_cols {
+            for row_num in 0..number_of_rows {
+                matrix_rows[col_num][row_num] = matrix_cols[row_num][col_num]
+            }
+        }
+        Matrix::from_rows(matrix_rows).unwrap()
     }
 }
 
@@ -456,7 +495,7 @@ mod tests {
 
         for r in 0..rows {
             for c in 0..cols {
-                assert_f64_eq!(actual.rows[r].columns[c], expected[r][c]);
+                assert_f64_eq!(actual.rows[r].row_elems[c], expected[r][c]);
             }
         }
     }
@@ -567,15 +606,39 @@ mod tests {
         let m = Matrix::new(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]).unwrap();
 
         let v = vec![7.0, 8.0, 9.0];
-        let row = Row { columns: v };
+        let row = Row { row_elems: v };
         let result = m * row;
 
         let expected = vec![
             1.0 * 7.0 + 2.0 * 8.0 + 3.0 * 9.0, // 50.0
             4.0 * 7.0 + 5.0 * 8.0 + 6.0 * 9.0, // 122.0
         ];
-        let expected_row = Row { columns: expected };
+        let expected_row = Row {
+            row_elems: expected,
+        };
 
         assert_eq!(result, expected_row);
+    }
+    #[test]
+    fn test_matrix_matrix_multiplication_square() {
+        let m1 = Matrix::new(vec![vec![1.0, 2.0], vec![3.0, 4.0]]).unwrap();
+
+        let m2 = Matrix::new(vec![vec![5.0, 6.0], vec![7.0, 8.0]]).unwrap();
+
+        let result = m1 * m2;
+
+        let expected = Matrix::new(vec![
+            vec![
+                1.0 * 5.0 + 2.0 * 7.0, // 19.0
+                1.0 * 6.0 + 2.0 * 8.0, // 22.0
+            ],
+            vec![
+                3.0 * 5.0 + 4.0 * 7.0, // 43.0
+                3.0 * 6.0 + 4.0 * 8.0, // 50.0
+            ],
+        ])
+        .unwrap();
+
+        assert_eq!(result, expected);
     }
 }
