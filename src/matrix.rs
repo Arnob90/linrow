@@ -1,5 +1,6 @@
 use crate::constants::EPSILON;
 use crate::impl_forward_ref_binop;
+use crate::operation_logger::{InvertMatrixLogger, MatrixLogger};
 use crate::row::{Row, dot_product};
 use rayon::prelude::*;
 use std::fmt::Display;
@@ -110,6 +111,11 @@ impl IndexMut<usize> for Matrix {
         &mut self.rows[index]
     }
 }
+#[derive(Debug, Error)]
+pub enum MatrixInversionError {
+    #[error("Nonsquare matrix can't be inverted")]
+    NonsquareMatrix,
+}
 impl Matrix {
     /// Creates a new `Matrix` from a `Vec<Vec<f64>>`.
     ///
@@ -177,11 +183,27 @@ impl Matrix {
                 .collect(),
         })
     }
+    pub fn with_dimensions(
+        rows_num: usize,
+        cols_num: usize,
+    ) -> Result<Matrix, MatrixCreationError> {
+        Matrix::new(vec![vec![0.0; cols_num]; rows_num])
+    }
+    pub fn identity_matrix(dimension: usize) -> Result<Matrix, MatrixCreationError> {
+        let mut required_matrix = Self::with_dimensions(dimension, dimension)?;
+        for i in 0..dimension {
+            required_matrix[i][i] = 1.0
+        }
+        Ok(required_matrix)
+    }
     pub fn from_rows(given_rows: Vec<Row>) -> Result<Self, MatrixCreationError> {
         Self::new(given_rows.into_iter().map(|row| row.row_elems).collect())
     }
-    pub fn swap_rows(&mut self, i: usize, j: usize) {
+    pub fn swap_rows<LoggerT: MatrixLogger>(&mut self, i: usize, j: usize, logger: &mut LoggerT) {
         self.rows.swap(i, j);
+        let (rows_num, _) = self.get_dimensions();
+        let required_matrix = Self::with_dimensions(rows_num, rows_num).unwrap();
+        logger.log(required_matrix);
     }
     /// Returns the dimensions of the matrix as a tuple `(rows, columns)`.
     ///
@@ -223,12 +245,13 @@ impl Matrix {
     /// ```
     /// use linrow::matrix::Matrix;
     /// use linrow::row::Row;
+    /// use linrow::operation_logger::NoopLogger;
     ///
     /// let mut m = Matrix::new(vec![
     ///     vec![1.0, 2.0],
     ///     vec![3.0, 4.0],
     /// ]).unwrap();
-    /// m.swap_rows(0, 1);
+    /// m.swap_rows(0, 1, &mut NoopLogger {});
     /// // assert_eq!(m[0], Row::new(vec![3.0, 4.0]));
     /// // assert_eq!(m[1], Row::new(vec![1.0, 2.0]));
     /// ```
@@ -245,12 +268,16 @@ impl Matrix {
     ///
     /// A `PivotMoving` enum indicating whether a pivot was found and moved,
     /// or if the matrix is already in Row Echelon Form (REF) from this point onwards.
-    fn move_first_pivot(&mut self, row_to_start: usize) -> PivotMoving {
+    fn move_first_pivot<LoggerT: MatrixLogger>(
+        &mut self,
+        row_to_start: usize,
+        matrix_logger: &mut LoggerT,
+    ) -> PivotMoving {
         let (rows_len, columns_len) = self.get_dimensions();
         for col_idx in 0..columns_len {
             for row_idx in row_to_start..rows_len {
                 if self[row_idx][col_idx].abs() > EPSILON {
-                    self.swap_rows(row_idx, row_to_start);
+                    self.swap_rows(row_idx, row_to_start, matrix_logger);
                     return PivotMoving::PivotMoved {
                         row: row_to_start,
                         col: col_idx,
@@ -272,15 +299,22 @@ impl Matrix {
     ///
     /// * `(pivot_row_idx, pivot_col_idx)` - A tuple indicating the row and column
     ///   of the current pivot element.
-    fn reduce_bottom_rows(&mut self, (pivot_row_idx, pivot_col_idx): (usize, usize)) {
+    fn reduce_bottom_rows<LoggerT: MatrixLogger>(
+        &mut self,
+        (pivot_row_idx, pivot_col_idx): (usize, usize),
+        logger: &mut LoggerT,
+    ) {
         let (row_len, _) = self.get_dimensions();
         let to_divide = self[pivot_row_idx][pivot_col_idx];
+        let mut elementary_matrix = Self::identity_matrix(row_len).unwrap();
         self[pivot_row_idx] /= to_divide;
         for row_idx in pivot_row_idx + 1..row_len {
             let scale = self[row_idx][pivot_col_idx];
             let scaled_pivot_row = self[pivot_row_idx].clone() * scale;
             self[row_idx] -= scaled_pivot_row;
+            elementary_matrix[row_idx][pivot_row_idx] = -scale;
         }
+        logger.log(elementary_matrix);
     }
     /// Converts the matrix into Row Echelon Form (REF) using Gaussian elimination.
     ///
@@ -303,6 +337,7 @@ impl Matrix {
     ///
     /// ```
     /// use linrow::matrix::Matrix;
+    /// use linrow::operation_logger::NoopLogger;
     ///
     /// let mut m = Matrix::new(vec![
     ///     vec![1.0, 2.0, -1.0, -4.0],
@@ -310,7 +345,7 @@ impl Matrix {
     ///     vec![-2.0, 0.0, -3.0, 22.0],
     /// ]).unwrap();
     ///
-    /// m.row_echelon();
+    /// m.row_echelon(&mut NoopLogger {});
     ///
     /// // The exact values might vary slightly due to floating point arithmetic,
     /// // but the form should be echelon.
@@ -319,14 +354,17 @@ impl Matrix {
     /// //  [0, 1, -1, -3],
     /// //  [0, 0, 1, -4]]
     /// ```
-    pub fn row_echelon(&mut self) -> Vec<(usize, usize)> {
+    pub fn row_echelon<LoggerT: MatrixLogger>(
+        &mut self,
+        logger: &mut LoggerT,
+    ) -> Vec<(usize, usize)> {
         let mut current_pivot_row: usize = 0;
         let mut pivot_locations: Vec<(usize, usize)> = vec![];
         loop {
-            let move_first_pivot = self.move_first_pivot(current_pivot_row);
+            let move_first_pivot = self.move_first_pivot(current_pivot_row, logger);
             match move_first_pivot {
                 PivotMoving::PivotMoved { row, col } => {
-                    self.reduce_bottom_rows((row, col));
+                    self.reduce_bottom_rows((row, col), logger);
                     current_pivot_row += 1;
                     pivot_locations.push((row, col));
                 }
@@ -353,31 +391,45 @@ impl Matrix {
     ///
     /// ```
     /// use linrow::matrix::Matrix;
-    ///
+    /// use linrow::operation_logger::NoopLogger;
     /// let mut m = Matrix::new(vec![
     ///     vec![1.0, 2.0, 3.0, 9.0],
     ///     vec![2.0, -1.0, 1.0, 8.0],
     ///     vec![3.0, 0.0, -1.0, 3.0],
     /// ]).unwrap();
     ///
-    /// m.reduced_row_echelon();
+    /// m.reduced_row_echelon(&mut NoopLogger {});
     ///
     /// // Expected RREF for a unique solution:
     /// // [[1, 0, 0, 2],
     /// //  [0, 1, 0, -1],
     /// //  [0, 0, 1, 3]]
     /// ```
-    pub fn reduced_row_echelon(&mut self) {
-        let pivots = self.row_echelon();
+    pub fn reduced_row_echelon<LoggerT: MatrixLogger>(&mut self, logger: &mut LoggerT) {
+        let pivots = self.row_echelon(logger);
+        //If logger is no op, we can hope for dead code elimination to erase the initialization
+        let mut required_elementary_matrix =
+            Self::identity_matrix(self.get_dimensions().0).unwrap();
         for (pivot_row_idx, pivot_col_idx) in pivots.into_iter().rev() {
             for to_check_row in (0..pivot_row_idx).rev() {
                 let item_in_col = self[to_check_row][pivot_col_idx];
                 if item_in_col.abs() > EPSILON {
                     let scale = self[pivot_row_idx].clone() * item_in_col;
                     self[to_check_row] -= scale;
+                    required_elementary_matrix[to_check_row][pivot_row_idx] = -item_in_col;
                 }
             }
         }
+    }
+    pub fn invert(&mut self) -> Result<(), MatrixInversionError> {
+        let (rows_len, cols_len) = self.get_dimensions();
+        if rows_len != cols_len {
+            return Err(MatrixInversionError::NonsquareMatrix);
+        }
+        let mut invert_logger = InvertMatrixLogger::with_dimensions(self.get_dimensions().0);
+        self.reduced_row_echelon(&mut invert_logger);
+        *self = invert_logger.inverse_matrix();
+        Ok(())
     }
 }
 
@@ -419,7 +471,7 @@ impl Mul<&Row> for &Matrix {
         let (rows_len, _) = self.get_dimensions();
         let mut row: Row = Row::new(vec![]);
         for i in 0..rows_len {
-            row.row_elems.push(dot_product(&self[i], &rhs).expect(
+            row.row_elems.push(dot_product(&self[i], rhs).expect(
                 "The column of given matrix is not equal to the dimension of the given vector",
             ));
         }
@@ -441,16 +493,16 @@ pub fn transpose(given_column_matrix: &Matrix) -> Matrix {
     required_matrix
 }
 
-impl Mul<Matrix> for Matrix {
+impl Mul<&Matrix> for &Matrix {
     type Output = Matrix;
-    fn mul(self, rhs: Matrix) -> Self::Output {
+    fn mul(self, rhs: &Matrix) -> Self::Output {
         let (_, lhs_col_len) = self.get_dimensions();
         let (rhs_row_len, _) = rhs.get_dimensions();
         assert_eq!(
             rhs_row_len, lhs_col_len,
             "Row number of RHS must match col number of LHS"
         );
-        let col_matrix = transpose(&rhs);
+        let col_matrix = transpose(rhs);
 
         let result_rows: Vec<Vec<f64>> = self
             .rows
@@ -474,18 +526,15 @@ impl Mul<Matrix> for Matrix {
         Matrix::new(result_rows).unwrap()
     }
 }
+impl_forward_ref_binop!(Mul, mul, Matrix, Matrix, Matrix);
 
 #[cfg(test)]
 mod tests {
+    use crate::operation_logger::NoopLogger;
+
     use super::*; // Import your Matrix, Row, and EPSILON
 
     // Helper macro to compare two f64 values within EPSILON
-    macro_rules! assert_f64_eq {
-        ($a:expr, $b:expr) => {
-            assert!(($a - $b).abs() < EPSILON, "Expected {}, got {}", $b, $a);
-        };
-    }
-
     #[test]
     fn test_rref_unique_solution() {
         // System:
@@ -500,7 +549,7 @@ mod tests {
         ])
         .unwrap();
 
-        m.reduced_row_echelon();
+        m.reduced_row_echelon(&mut NoopLogger {});
 
         let expected = Matrix::new(vec![
             vec![1.0, 0.0, 0.0, 2.0],
@@ -520,7 +569,7 @@ mod tests {
         ])
         .unwrap();
 
-        m.reduced_row_echelon();
+        m.reduced_row_echelon(&mut NoopLogger {});
 
         let expected = Matrix::new(vec![
             vec![1.0, 2.0, 0.0, 5.0, 0.0, -3.0],
@@ -541,7 +590,7 @@ mod tests {
         ])
         .unwrap();
 
-        m.reduced_row_echelon();
+        m.reduced_row_echelon(&mut NoopLogger {});
 
         let expected = Matrix::new(vec![
             vec![1.0, 2.0, 3.0],
@@ -556,7 +605,7 @@ mod tests {
     fn test_rref_inconsistent_system() {
         let mut m = Matrix::new(vec![vec![1.0, 1.0, 5.0], vec![1.0, 1.0, 10.0]]).unwrap();
 
-        m.reduced_row_echelon();
+        m.reduced_row_echelon(&mut NoopLogger {});
 
         // The bottom row will evaluate to 0 = 1
         let expected = Matrix::new(vec![
@@ -574,8 +623,7 @@ mod tests {
             vec![1.0, 1.0, 3.0],
         ])
         .unwrap();
-
-        m.reduced_row_echelon();
+        m.reduced_row_echelon(&mut NoopLogger {});
 
         let expected = Matrix::new(vec![vec![1.0, 0.0, 1.0], vec![0.0, 1.0, 2.0]]).unwrap();
 
@@ -585,7 +633,7 @@ mod tests {
     fn test_rref_identity_matrix() {
         let mut m = Matrix::new(vec![vec![1.0, 0.0], vec![0.0, 1.0]]).unwrap();
 
-        m.reduced_row_echelon();
+        m.reduced_row_echelon(&mut NoopLogger {});
 
         let expected = Matrix::new(vec![vec![1.0, 0.0], vec![0.0, 1.0]]).unwrap();
 
@@ -666,5 +714,10 @@ mod tests {
 
         // A * I = A
         assert_eq!(result, m);
+    }
+    #[test]
+    fn test_inverse() {
+        let mut m = Matrix::new(vec![vec![1.0, 2.0], vec![3.0, 4.0]]).unwrap();
+        m.invert().unwrap();
     }
 }
