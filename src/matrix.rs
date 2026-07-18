@@ -1,6 +1,7 @@
 use crate::constants::EPSILON;
 use crate::def_matrix;
 use crate::impl_forward_ref_binop;
+use crate::operation_logger::NoopLogger;
 use crate::operation_logger::{InvertMatrixLogger, MatrixLogger};
 use crate::row::{Row, dot_product};
 use rayon::prelude::*;
@@ -200,10 +201,14 @@ impl Matrix {
     pub fn from_rows(given_rows: Vec<Row>) -> Result<Self, MatrixCreationError> {
         Self::new(given_rows.into_iter().map(|row| row.row_elems).collect())
     }
-    pub fn swap_rows<LoggerT: MatrixLogger>(&mut self, i: usize, j: usize, logger: &mut LoggerT) {
+    fn raw_swap_rows(&mut self, i: usize, j: usize) {
         self.rows.swap(i, j);
+    }
+    pub fn swap_rows<LoggerT: MatrixLogger>(&mut self, i: usize, j: usize, logger: &mut LoggerT) {
+        self.raw_swap_rows(i, j);
         let (rows_num, _) = self.get_dimensions();
-        let required_matrix = Self::with_dimensions(rows_num, rows_num).unwrap();
+        let mut required_matrix = Self::identity_matrix(rows_num).unwrap();
+        required_matrix.raw_swap_rows(i, j);
         logger.log(required_matrix);
     }
     /// Returns the dimensions of the matrix as a tuple `(rows, columns)`.
@@ -306,16 +311,21 @@ impl Matrix {
         logger: &mut LoggerT,
     ) {
         let (row_len, _) = self.get_dimensions();
-        let to_divide = self[pivot_row_idx][pivot_col_idx];
-        let mut elementary_matrix = Self::identity_matrix(row_len).unwrap();
-        self[pivot_row_idx] /= to_divide;
+        let pivot_val = self[pivot_row_idx][pivot_col_idx];
+        let mut scale_matrix = Self::identity_matrix(row_len).unwrap();
+        scale_matrix[pivot_row_idx][pivot_row_idx] = 1.0 / pivot_val;
+        self[pivot_row_idx] /= pivot_val;
+        logger.log(scale_matrix);
+        let mut elimination_matrix = Self::identity_matrix(row_len).unwrap();
         for row_idx in pivot_row_idx + 1..row_len {
-            let scale = self[row_idx][pivot_col_idx];
-            let scaled_pivot_row = self[pivot_row_idx].clone() * scale;
-            self[row_idx] -= scaled_pivot_row;
-            elementary_matrix[row_idx][pivot_row_idx] = -scale;
+            let factor = self[row_idx][pivot_col_idx];
+            if factor.abs() > EPSILON {
+                let scaled_pivot_row = self[pivot_row_idx].clone() * factor;
+                self[row_idx] -= scaled_pivot_row;
+                elimination_matrix[row_idx][pivot_row_idx] = -factor;
+            }
         }
-        logger.log(elementary_matrix);
+        logger.log(elimination_matrix);
     }
     /// Converts the matrix into Row Echelon Form (REF) using Gaussian elimination.
     ///
@@ -408,16 +418,17 @@ impl Matrix {
     /// ```
     pub fn reduced_row_echelon<LoggerT: MatrixLogger>(&mut self, logger: &mut LoggerT) {
         let pivots = self.row_echelon(logger);
-        //If logger is no op, we can hope for dead code elimination to erase the initialization
-        let mut required_elementary_matrix =
-            Self::identity_matrix(self.get_dimensions().0).unwrap();
+        let (rows_num, _) = self.get_dimensions();
+
         for (pivot_row_idx, pivot_col_idx) in pivots.into_iter().rev() {
             for to_check_row in (0..pivot_row_idx).rev() {
                 let item_in_col = self[to_check_row][pivot_col_idx];
                 if item_in_col.abs() > EPSILON {
                     let scale = self[pivot_row_idx].clone() * item_in_col;
                     self[to_check_row] -= scale;
-                    required_elementary_matrix[to_check_row][pivot_row_idx] = -item_in_col;
+                    let mut step_matrix = Self::identity_matrix(rows_num).unwrap();
+                    step_matrix[to_check_row][pivot_row_idx] = -item_in_col;
+                    logger.log(step_matrix);
                 }
             }
         }
@@ -717,7 +728,16 @@ mod tests {
 
     #[test]
     fn test_inverse() {
-        let mut m = def_matrix![[1.0, 2.0], [3.0, 4.0],].unwrap();
-        m.invert().unwrap();
+        let m = def_matrix![[1.0, 2.0], [3.0, 4.0],].unwrap();
+
+        // Keep a copy of the original to multiply later
+        let mut m_inverse = m.clone();
+        m_inverse.invert().unwrap();
+
+        // An invertible matrix multiplied by its inverse must equal the identity matrix
+        let result = m * m_inverse;
+        let identity = def_matrix![[1.0, 0.0], [0.0, 1.0],].unwrap();
+
+        assert_eq!(result, identity);
     }
 }
