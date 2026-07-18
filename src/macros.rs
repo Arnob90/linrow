@@ -42,3 +42,13 @@ macro_rules! impl_forward_ref_assign_op {
         }
     };
 }
+#[macro_export]
+macro_rules! def_matrix {
+    ( $( [ $( $val:expr ),*$(,)? ] ),* $(,)? ) => {
+        Matrix::new(vec![
+            $(
+                vec![ $( $val ),* ]
+            ),*
+        ])
+    };
+}

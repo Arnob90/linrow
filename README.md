@@ -22,7 +22,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-linrow = "0.2.2" # Or the latest version
+linrow = "0.4.1" # Or the latest version
 ```
 
 ## Usage
@@ -31,17 +31,17 @@ Here's a quick example of how to create a matrix and reduce it to its Reduced Ro
 
 ```rust
 use linrow::matrix::Matrix;
-
+use linrow::def_matrix;
 fn main() {
-    // Define a system of linear equations as a matrix
+    // Define a system of linear equations cleanly as a matrix:
     // 1x + 2y + 3z = 9
     // 2x - 1y + 1z = 8
     // 3x + 0y - 1z = 3
-    let mut matrix = Matrix::new(vec![
-        vec![1.0, 2.0, 3.0, 9.0],
-        vec![2.0, -1.0, 1.0, 8.0],
-        vec![3.0, 0.0, -1.0, 3.0],
-    ]).unwrap();
+    let mut matrix = def_matrix![
+        [1.0,  2.0,  3.0, 9.0],
+        [2.0, -1.0,  1.0, 8.0],
+        [3.0,  0.0, -1.0, 3.0],
+    ].unwrap();
 
     println!("Original Matrix:\n{}", matrix);
 

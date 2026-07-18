@@ -1,4 +1,5 @@
 use crate::constants::EPSILON;
+use crate::def_matrix;
 use crate::impl_forward_ref_binop;
 use crate::operation_logger::{InvertMatrixLogger, MatrixLogger};
 use crate::row::{Row, dot_product};
@@ -542,106 +543,101 @@ mod tests {
         // 2x - 1y + 1z = 8
         // 3x + 0y - 1z = 3
         // Solution: x=2, y=-1, z=3
-        let mut m = Matrix::new(vec![
-            vec![1.0, 2.0, 3.0, 9.0],
-            vec![2.0, -1.0, 1.0, 8.0],
-            vec![3.0, 0.0, -1.0, 3.0],
-        ])
+        let mut m = def_matrix![
+            [1.0, 2.0, 3.0, 9.0],
+            [2.0, -1.0, 1.0, 8.0],
+            [3.0, 0.0, -1.0, 3.0],
+        ]
         .unwrap();
 
         m.reduced_row_echelon(&mut NoopLogger {});
 
-        let expected = Matrix::new(vec![
-            vec![1.0, 0.0, 0.0, 2.0],
-            vec![0.0, 1.0, 0.0, -1.0],
-            vec![0.0, 0.0, 1.0, 3.0],
-        ])
+        let expected = def_matrix![
+            [1.0, 0.0, 0.0, 2.0],
+            [0.0, 1.0, 0.0, -1.0],
+            [0.0, 0.0, 1.0, 3.0],
+        ]
         .unwrap();
 
         assert_eq!(m, expected);
     }
     #[test]
     fn test_rref_sympy_example() {
-        let mut m = Matrix::new(vec![
-            vec![1.0, 2.0, 0.0, 5.0, 0.0, -3.0],
-            vec![-1.0, -2.0, 1.0, -6.0, 1.0, 2.0],
-            vec![-2.0, -4.0, 0.0, -10.0, 1.0, 8.0],
-        ])
+        let mut m = def_matrix![
+            [1.0, 2.0, 0.0, 5.0, 0.0, -3.0],
+            [-1.0, -2.0, 1.0, -6.0, 1.0, 2.0],
+            [-2.0, -4.0, 0.0, -10.0, 1.0, 8.0],
+        ]
         .unwrap();
 
         m.reduced_row_echelon(&mut NoopLogger {});
 
-        let expected = Matrix::new(vec![
-            vec![1.0, 2.0, 0.0, 5.0, 0.0, -3.0],
-            vec![0.0, 0.0, 1.0, -1.0, 0.0, -3.0],
-            vec![0.0, 0.0, 0.0, 0.0, 1.0, 2.0],
-        ])
+        let expected = def_matrix![
+            [1.0, 2.0, 0.0, 5.0, 0.0, -3.0],
+            [0.0, 0.0, 1.0, -1.0, 0.0, -3.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0, 2.0],
+        ]
         .unwrap();
 
         assert_eq!(m, expected);
     }
+
     #[test]
     fn test_rref_dependent_rows() {
         // Row 2 is exactly 2x Row 1. Row 3 is 3x Row 1.
-        let mut m = Matrix::new(vec![
-            vec![1.0, 2.0, 3.0],
-            vec![2.0, 4.0, 6.0],
-            vec![3.0, 6.0, 9.0],
-        ])
-        .unwrap();
+        let mut m = def_matrix![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0], [3.0, 6.0, 9.0],].unwrap();
 
         m.reduced_row_echelon(&mut NoopLogger {});
 
-        let expected = Matrix::new(vec![
-            vec![1.0, 2.0, 3.0],
-            vec![0.0, 0.0, 0.0],
-            vec![0.0, 0.0, 0.0],
-        ])
-        .unwrap();
+        let expected = def_matrix![[1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0],].unwrap();
 
         assert_eq!(m, expected);
     }
+
     #[test]
     fn test_rref_inconsistent_system() {
-        let mut m = Matrix::new(vec![vec![1.0, 1.0, 5.0], vec![1.0, 1.0, 10.0]]).unwrap();
+        let mut m = def_matrix![[1.0, 1.0, 5.0], [1.0, 1.0, 10.0],].unwrap();
 
         m.reduced_row_echelon(&mut NoopLogger {});
 
         // The bottom row will evaluate to 0 = 1
-        let expected = Matrix::new(vec![
-            vec![1.0, 1.0, 0.0],
-            vec![0.0, 0.0, 1.0], // 0x + 0y = 1
-        ])
+        let expected = def_matrix![
+            [1.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0], // 0x + 0y = 1
+        ]
         .unwrap();
 
         assert_eq!(m, expected);
     }
+
     #[test]
     fn test_rref_requires_row_swap() {
-        let mut m = Matrix::new(vec![
-            vec![0.0, 2.0, 4.0], // Cannot use 0.0 as pivot!
-            vec![1.0, 1.0, 3.0],
-        ])
+        let mut m = def_matrix![
+            [0.0, 2.0, 4.0], // Cannot use 0.0 as pivot!
+            [1.0, 1.0, 3.0],
+        ]
         .unwrap();
         m.reduced_row_echelon(&mut NoopLogger {});
 
-        let expected = Matrix::new(vec![vec![1.0, 0.0, 1.0], vec![0.0, 1.0, 2.0]]).unwrap();
+        let expected = def_matrix![[1.0, 0.0, 1.0], [0.0, 1.0, 2.0],].unwrap();
 
         assert_eq!(m, expected);
     }
+
     #[test]
     fn test_rref_identity_matrix() {
-        let mut m = Matrix::new(vec![vec![1.0, 0.0], vec![0.0, 1.0]]).unwrap();
+        let mut m = def_matrix![[1.0, 0.0], [0.0, 1.0],].unwrap();
 
         m.reduced_row_echelon(&mut NoopLogger {});
 
-        let expected = Matrix::new(vec![vec![1.0, 0.0], vec![0.0, 1.0]]).unwrap();
+        let expected = def_matrix![[1.0, 0.0], [0.0, 1.0],].unwrap();
 
         assert_eq!(m, expected);
     }
+
     #[test]
     fn test_matrix_vector_multiplication() {
-        let m = Matrix::new(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]).unwrap();
+        let m = def_matrix![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0],].unwrap();
 
         let v = vec![7.0, 8.0, 9.0];
         let row = Row { row_elems: v };
@@ -657,67 +653,71 @@ mod tests {
 
         assert_eq!(result, expected_row);
     }
+
     #[test]
     fn test_matrix_matrix_multiplication_square() {
-        let m1 = Matrix::new(vec![vec![1.0, 2.0], vec![3.0, 4.0]]).unwrap();
+        let m1 = def_matrix![[1.0, 2.0], [3.0, 4.0],].unwrap();
 
-        let m2 = Matrix::new(vec![vec![5.0, 6.0], vec![7.0, 8.0]]).unwrap();
+        let m2 = def_matrix![[5.0, 6.0], [7.0, 8.0],].unwrap();
 
         let result = m1 * m2;
 
-        let expected = Matrix::new(vec![
-            vec![
+        let expected = def_matrix![
+            [
                 1.0 * 5.0 + 2.0 * 7.0, // 19.0
                 1.0 * 6.0 + 2.0 * 8.0, // 22.0
             ],
-            vec![
+            [
                 3.0 * 5.0 + 4.0 * 7.0, // 43.0
                 3.0 * 6.0 + 4.0 * 8.0, // 50.0
             ],
-        ])
+        ]
         .unwrap();
 
         assert_eq!(result, expected);
     }
+
     #[test]
     fn test_matrix_matrix_multiplication_rectangular() {
         // 2x3 Matrix
-        let m1 = Matrix::new(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]).unwrap();
+        let m1 = def_matrix![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0],].unwrap();
 
         // 3x2 Matrix
-        let m2 = Matrix::new(vec![vec![7.0, 8.0], vec![9.0, 10.0], vec![11.0, 12.0]]).unwrap();
+        let m2 = def_matrix![[7.0, 8.0], [9.0, 10.0], [11.0, 12.0],].unwrap();
 
         let result = m1 * m2;
 
         // Result should be 2x2
-        let expected = Matrix::new(vec![
-            vec![
+        let expected = def_matrix![
+            [
                 1.0 * 7.0 + 2.0 * 9.0 + 3.0 * 11.0,  // 58.0
                 1.0 * 8.0 + 2.0 * 10.0 + 3.0 * 12.0, // 64.0
             ],
-            vec![
+            [
                 4.0 * 7.0 + 5.0 * 9.0 + 6.0 * 11.0,  // 139.0
                 4.0 * 8.0 + 5.0 * 10.0 + 6.0 * 12.0, // 154.0
             ],
-        ])
+        ]
         .unwrap();
 
         assert_eq!(result, expected);
     }
+
     #[test]
     fn test_matrix_multiplication_identity() {
-        let m = Matrix::new(vec![vec![1.0, 2.0], vec![3.0, 4.0]]).unwrap();
+        let m = def_matrix![[1.0, 2.0], [3.0, 4.0],].unwrap();
 
-        let identity = Matrix::new(vec![vec![1.0, 0.0], vec![0.0, 1.0]]).unwrap();
+        let identity = def_matrix![[1.0, 0.0], [0.0, 1.0],].unwrap();
 
         let result = m.clone() * identity;
 
         // A * I = A
         assert_eq!(result, m);
     }
+
     #[test]
     fn test_inverse() {
-        let mut m = Matrix::new(vec![vec![1.0, 2.0], vec![3.0, 4.0]]).unwrap();
+        let mut m = def_matrix![[1.0, 2.0], [3.0, 4.0],].unwrap();
         m.invert().unwrap();
     }
 }
