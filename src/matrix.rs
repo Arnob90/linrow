@@ -1,8 +1,11 @@
 use crate::constants::EPSILON;
+#[allow(unused_imports)]
 use crate::def_matrix;
 use crate::impl_forward_ref_binop;
+#[allow(unused_imports)]
 use crate::operation_logger::NoopLogger;
 use crate::operation_logger::{InvertMatrixLogger, MatrixLogger};
+use crate::row::DotProductError;
 use crate::row::{Row, dot_product};
 use rayon::prelude::*;
 use std::fmt::Display;
@@ -504,11 +507,13 @@ pub fn transpose(given_column_matrix: &Matrix) -> Matrix {
     }
     required_matrix
 }
-
-impl Mul<&Matrix> for &Matrix {
-    type Output = Matrix;
-    fn mul(self, rhs: &Matrix) -> Self::Output {
-        let (_, lhs_col_len) = self.get_dimensions();
+impl Matrix {
+    pub fn multiply(
+        lhs: &Matrix,
+        rhs: &Matrix,
+        dot_product_func: impl Fn(&Row, &Row) -> Result<f64, DotProductError> + Send + Sync,
+    ) -> Matrix {
+        let (_, lhs_col_len) = lhs.get_dimensions();
         let (rhs_row_len, _) = rhs.get_dimensions();
         assert_eq!(
             rhs_row_len, lhs_col_len,
@@ -516,26 +521,25 @@ impl Mul<&Matrix> for &Matrix {
         );
         let col_matrix = transpose(rhs);
 
-        let result_rows: Vec<Vec<f64>> = self
+        let result_rows: Vec<Vec<f64>> = lhs
             .rows
             .par_iter()
             .map(|row| {
                 col_matrix
                     .rows
                     .iter()
-                    .map(|col| dot_product(row, col).unwrap())
+                    .map(|col| dot_product_func(row, col).unwrap())
                     .collect()
             })
             .collect();
-        //        for row in self.rows.iter() {
-        //            let result_row: Vec<f64> = col_matrix
-        //                .rows
-        //                .iter()
-        //                .map(|col| dot_product(row, col).unwrap())
-        //                .collect();
-        //            result_rows.push(result_row);
-        //        }
         Matrix::new(result_rows).unwrap()
+    }
+}
+
+impl Mul<&Matrix> for &Matrix {
+    type Output = Matrix;
+    fn mul(self, rhs: &Matrix) -> Self::Output {
+        Matrix::multiply(self, rhs, dot_product)
     }
 }
 impl_forward_ref_binop!(Mul, mul, Matrix, Matrix, Matrix);

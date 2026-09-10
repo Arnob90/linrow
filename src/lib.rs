@@ -8,4 +8,4 @@ pub mod macros;
 pub mod matrix;
 pub mod operation_logger;
 pub mod row;
-
+pub mod utils;
