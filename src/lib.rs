@@ -3,9 +3,11 @@
 //! This crate provides data structures and algorithms for working with matrices,
 //! such as creating matrices, performing row operations, and solving linear systems.
 
+pub mod complex;
 mod constants;
 pub mod macros;
 pub mod matrix;
 pub mod operation_logger;
 pub mod row;
+pub mod traits;
 pub mod utils;

@@ -1,4 +1,3 @@
-use crate::constants::EPSILON;
 #[allow(unused_imports)]
 use crate::def_matrix;
 use crate::impl_forward_ref_binop;
@@ -6,15 +5,36 @@ use crate::impl_forward_ref_binop;
 use crate::operation_logger::NoopLogger;
 use crate::operation_logger::{InvertMatrixLogger, MatrixLogger};
 use crate::row::DotProductError;
-use crate::row::{Row, dot_product};
+use crate::row::{Row, bilinear_dot_product};
+use crate::traits::Scalar;
+use crate::utils::get_generic_eps;
+use num_traits::{One, Zero};
 use rayon::prelude::*;
 use std::fmt::Display;
 use std::ops::{Index, IndexMut, Mul};
 use thiserror::Error;
+
+/// Trait representing an element that can be checked for pivot eligibility in Gaussian elimination.
+///
+/// Types with approximate floating point behavior (like `f64`, `f32`) should check against an epsilon,
+/// while exact types (like integers or rational numbers) can check for exact non-zero equality.
+pub trait PivotElement {
+    fn is_pivot(&self) -> bool;
+}
+
+// Default 1: Anything with a norm/magnitude (f32, f64, Complex)
+impl<T: Scalar> PivotElement for T {
+    #[inline]
+    fn is_pivot(&self) -> bool {
+        let eps = get_generic_eps();
+        self.norm() > eps
+    }
+}
+
 /// Represents a mathematical matrix.
 ///
 /// A `Matrix` is composed of a vector of `Row`s, where each `Row` contains
-/// a vector of `f64` values representing the elements of the matrix.
+/// a vector of values of type `T` representing the elements of the matrix.
 ///
 /// # Examples
 ///
@@ -28,11 +48,11 @@ use thiserror::Error;
 /// let matrix = Matrix::new(matrix_data).unwrap();
 /// ```
 #[derive(Debug, Clone, PartialEq)]
-pub struct Matrix {
-    rows: Vec<Row>,
+pub struct Matrix<T = f64> {
+    rows: Vec<Row<T>>,
 }
 
-impl Display for Matrix {
+impl<T: Display> Display for Matrix<T> {
     /// Formats the matrix for display.
     ///
     /// Each row is displayed on a single line, and rows are separated by commas.
@@ -64,10 +84,10 @@ impl Display for Matrix {
 
 #[derive(Debug, Error)]
 pub enum MatrixCreationError {
-    /// Returned when the input `Vec<Vec<f64>>` has rows of inconsistent lengths.
+    /// Returned when the input `Vec<Vec<T>>` has rows of inconsistent lengths.
     #[error("All columns must be of the same size")]
     InvalidDimensionError,
-    /// Returned when the input `Vec<Vec<f64>>` is empty, but its first row is also empty.
+    /// Returned when the input `Vec<Vec<T>>` is empty, but its first row is also empty.
     #[error("Wtf is this empty matrix?")]
     EmptyMatrixError,
 }
@@ -79,8 +99,9 @@ enum PivotMoving {
     /// Indicates that the Row Echelon Form (REF) has been achieved and no more pivots can be found.
     REFAchieved,
 }
-impl Index<usize> for Matrix {
-    type Output = Row;
+
+impl<T> Index<usize> for Matrix<T> {
+    type Output = Row<T>;
     /// Allows immutable access to a specific row of the matrix using array-like indexing.
     ///
     /// # Arguments
@@ -91,7 +112,8 @@ impl Index<usize> for Matrix {
         &self.rows[index]
     }
 }
-impl IndexMut<usize> for Matrix {
+
+impl<T> IndexMut<usize> for Matrix<T> {
     /// Allows mutable access to a specific row of the matrix using array-like indexing.
     ///
     /// # Arguments
@@ -116,13 +138,15 @@ impl IndexMut<usize> for Matrix {
         &mut self.rows[index]
     }
 }
+
 #[derive(Debug, Error)]
 pub enum MatrixInversionError {
     #[error("Nonsquare matrix can't be inverted")]
     NonsquareMatrix,
 }
-impl Matrix {
-    /// Creates a new `Matrix` from a `Vec<Vec<f64>>`.
+
+impl<T> Matrix<T> {
+    /// Creates a new `Matrix` from a `Vec<Vec<T>>`.
     ///
     /// The input `given_raw_matrix` is a vector of vectors, where each inner vector
     /// represents a row of the matrix. All inner vectors must have the same length
@@ -130,7 +154,7 @@ impl Matrix {
     ///
     /// # Arguments
     ///
-    /// * `given_raw_matrix` - A `Vec<Vec<f64>>` representing the initial state of the matrix.
+    /// * `given_raw_matrix` - A `Vec<Vec<T>>` representing the initial state of the matrix.
     ///
     /// # Returns
     ///
@@ -158,17 +182,17 @@ impl Matrix {
     /// assert!(matches!(m2, Err(MatrixCreationError::InvalidDimensionError)));
     ///
     /// // Invalid: empty matrix (no columns)
-    /// let m3 = Matrix::new(vec![
+    /// let m3:Result<Matrix<f64>,MatrixCreationError> = Matrix::new(vec![
     ///     vec![],
     ///     vec![],
     /// ]);
     /// assert!(matches!(m3, Err(MatrixCreationError::EmptyMatrixError)));
     ///
     /// // Valid: empty matrix (no rows)
-    /// let m4 = Matrix::new(vec![]).unwrap();
+    /// let m4: Matrix<f64> = Matrix::new(vec![]).unwrap();
     /// assert_eq!(m4.get_dimensions(), (0, 0));
     /// ```
-    pub fn new(given_raw_matrix: Vec<Vec<f64>>) -> Result<Self, MatrixCreationError> {
+    pub fn new(given_raw_matrix: Vec<Vec<T>>) -> Result<Self, MatrixCreationError> {
         if given_raw_matrix.is_empty() {
             return Ok(Matrix { rows: vec![] });
         }
@@ -188,32 +212,15 @@ impl Matrix {
                 .collect(),
         })
     }
-    pub fn with_dimensions(
-        rows_num: usize,
-        cols_num: usize,
-    ) -> Result<Matrix, MatrixCreationError> {
-        Matrix::new(vec![vec![0.0; cols_num]; rows_num])
-    }
-    pub fn identity_matrix(dimension: usize) -> Result<Matrix, MatrixCreationError> {
-        let mut required_matrix = Self::with_dimensions(dimension, dimension)?;
-        for i in 0..dimension {
-            required_matrix[i][i] = 1.0
-        }
-        Ok(required_matrix)
-    }
-    pub fn from_rows(given_rows: Vec<Row>) -> Result<Self, MatrixCreationError> {
+
+    pub fn from_rows(given_rows: Vec<Row<T>>) -> Result<Self, MatrixCreationError> {
         Self::new(given_rows.into_iter().map(|row| row.row_elems).collect())
     }
+
     fn raw_swap_rows(&mut self, i: usize, j: usize) {
         self.rows.swap(i, j);
     }
-    pub fn swap_rows<LoggerT: MatrixLogger>(&mut self, i: usize, j: usize, logger: &mut LoggerT) {
-        self.raw_swap_rows(i, j);
-        let (rows_num, _) = self.get_dimensions();
-        let mut required_matrix = Self::identity_matrix(rows_num).unwrap();
-        required_matrix.raw_swap_rows(i, j);
-        logger.log(required_matrix);
-    }
+
     /// Returns the dimensions of the matrix as a tuple `(rows, columns)`.
     ///
     /// If the matrix is empty (contains no rows), it returns `(0, 0)`.
@@ -229,7 +236,7 @@ impl Matrix {
     /// ]).unwrap();
     /// assert_eq!(m1.get_dimensions(), (2, 3));
     ///
-    /// let m2 = Matrix::new(vec![]).unwrap();
+    /// let m2: Matrix<f64> = Matrix::new(vec![]).unwrap();
     /// assert_eq!(m2.get_dimensions(), (0, 0));
     /// ```
     pub fn get_dimensions(&self) -> (usize, usize) {
@@ -238,6 +245,26 @@ impl Matrix {
         }
         (self.rows.len(), self.rows.first().unwrap().row_elems.len())
     }
+}
+
+impl<T: Zero + Clone> Matrix<T> {
+    pub fn with_dimensions(
+        rows_num: usize,
+        cols_num: usize,
+    ) -> Result<Matrix<T>, MatrixCreationError> {
+        Matrix::new(vec![vec![T::zero(); cols_num]; rows_num])
+    }
+}
+
+impl<T: Zero + One + Clone> Matrix<T> {
+    pub fn identity_matrix(dimension: usize) -> Result<Matrix<T>, MatrixCreationError> {
+        let mut required_matrix = Self::with_dimensions(dimension, dimension)?;
+        for i in 0..dimension {
+            required_matrix[i][i] = T::one();
+        }
+        Ok(required_matrix)
+    }
+
     /// Swaps two rows in the matrix.
     ///
     /// # Arguments
@@ -264,6 +291,21 @@ impl Matrix {
     /// // assert_eq!(m[0], Row::new(vec![3.0, 4.0]));
     /// // assert_eq!(m[1], Row::new(vec![1.0, 2.0]));
     /// ```
+    pub fn swap_rows<LoggerT: MatrixLogger<T>>(
+        &mut self,
+        i: usize,
+        j: usize,
+        logger: &mut LoggerT,
+    ) {
+        self.raw_swap_rows(i, j);
+        let (rows_num, _) = self.get_dimensions();
+        let mut required_matrix = Self::identity_matrix(rows_num).unwrap();
+        required_matrix.raw_swap_rows(i, j);
+        logger.log(required_matrix);
+    }
+}
+
+impl<T: Scalar> Matrix<T> {
     /// Finds the first non-zero element (pivot) in or below `row_to_start`
     /// and moves its row to `row_to_start` by swapping.
     ///
@@ -277,7 +319,7 @@ impl Matrix {
     ///
     /// A `PivotMoving` enum indicating whether a pivot was found and moved,
     /// or if the matrix is already in Row Echelon Form (REF) from this point onwards.
-    fn move_first_pivot<LoggerT: MatrixLogger>(
+    fn move_first_pivot<LoggerT: MatrixLogger<T>>(
         &mut self,
         row_to_start: usize,
         matrix_logger: &mut LoggerT,
@@ -285,7 +327,7 @@ impl Matrix {
         let (rows_len, columns_len) = self.get_dimensions();
         for col_idx in 0..columns_len {
             for row_idx in row_to_start..rows_len {
-                if self[row_idx][col_idx].abs() > EPSILON {
+                if self[row_idx][col_idx].is_pivot() {
                     self.swap_rows(row_idx, row_to_start, matrix_logger);
                     return PivotMoving::PivotMoved {
                         row: row_to_start,
@@ -308,28 +350,29 @@ impl Matrix {
     ///
     /// * `(pivot_row_idx, pivot_col_idx)` - A tuple indicating the row and column
     ///   of the current pivot element.
-    fn reduce_bottom_rows<LoggerT: MatrixLogger>(
+    fn reduce_bottom_rows<LoggerT: MatrixLogger<T>>(
         &mut self,
         (pivot_row_idx, pivot_col_idx): (usize, usize),
         logger: &mut LoggerT,
     ) {
         let (row_len, _) = self.get_dimensions();
-        let pivot_val = self[pivot_row_idx][pivot_col_idx];
+        let pivot_val = self[pivot_row_idx][pivot_col_idx].clone();
         let mut scale_matrix = Self::identity_matrix(row_len).unwrap();
-        scale_matrix[pivot_row_idx][pivot_row_idx] = 1.0 / pivot_val;
-        self[pivot_row_idx] /= pivot_val;
+        scale_matrix[pivot_row_idx][pivot_row_idx] = T::one() / (pivot_val.clone());
+        self[pivot_row_idx] /= &pivot_val;
         logger.log(scale_matrix);
         let mut elimination_matrix = Self::identity_matrix(row_len).unwrap();
         for row_idx in pivot_row_idx + 1..row_len {
-            let factor = self[row_idx][pivot_col_idx];
-            if factor.abs() > EPSILON {
-                let scaled_pivot_row = self[pivot_row_idx].clone() * factor;
-                self[row_idx] -= scaled_pivot_row;
+            let factor = self[row_idx][pivot_col_idx].clone();
+            if factor.is_pivot() {
+                let scaled_pivot_row = self[pivot_row_idx].clone() * &factor;
+                self[row_idx] -= &scaled_pivot_row;
                 elimination_matrix[row_idx][pivot_row_idx] = -factor;
             }
         }
         logger.log(elimination_matrix);
     }
+
     /// Converts the matrix into Row Echelon Form (REF) using Gaussian elimination.
     ///
     /// This method modifies the matrix in-place.
@@ -368,7 +411,7 @@ impl Matrix {
     /// //  [0, 1, -1, -3],
     /// //  [0, 0, 1, -4]]
     /// ```
-    pub fn row_echelon<LoggerT: MatrixLogger>(
+    pub fn row_echelon<LoggerT: MatrixLogger<T>>(
         &mut self,
         logger: &mut LoggerT,
     ) -> Vec<(usize, usize)> {
@@ -419,16 +462,16 @@ impl Matrix {
     /// //  [0, 1, 0, -1],
     /// //  [0, 0, 1, 3]]
     /// ```
-    pub fn reduced_row_echelon<LoggerT: MatrixLogger>(&mut self, logger: &mut LoggerT) {
+    pub fn reduced_row_echelon<LoggerT: MatrixLogger<T>>(&mut self, logger: &mut LoggerT) {
         let pivots = self.row_echelon(logger);
         let (rows_num, _) = self.get_dimensions();
 
         for (pivot_row_idx, pivot_col_idx) in pivots.into_iter().rev() {
             for to_check_row in (0..pivot_row_idx).rev() {
-                let item_in_col = self[to_check_row][pivot_col_idx];
-                if item_in_col.abs() > EPSILON {
-                    let scale = self[pivot_row_idx].clone() * item_in_col;
-                    self[to_check_row] -= scale;
+                let item_in_col = self[to_check_row][pivot_col_idx].clone();
+                if item_in_col.is_pivot() {
+                    let scale = self[pivot_row_idx].clone() * &item_in_col;
+                    self[to_check_row] -= &scale;
                     let mut step_matrix = Self::identity_matrix(rows_num).unwrap();
                     step_matrix[to_check_row][pivot_row_idx] = -item_in_col;
                     logger.log(step_matrix);
@@ -436,6 +479,12 @@ impl Matrix {
             }
         }
     }
+}
+
+impl<T> Matrix<T>
+where
+    T: Scalar,
+{
     pub fn invert(&mut self) -> Result<(), MatrixInversionError> {
         let (rows_len, cols_len) = self.get_dimensions();
         if rows_len != cols_len {
@@ -448,8 +497,11 @@ impl Matrix {
     }
 }
 
-impl Mul<&Row> for &Matrix {
-    type Output = Row;
+impl<T> Mul<&Row<T>> for &Matrix<T>
+where
+    T: Scalar,
+{
+    type Output = Row<T>;
     /// Performs matrix-vector multiplication.
     ///
     /// Multiplies this `Matrix` by a `Row` (interpreted as a column vector).
@@ -481,47 +533,58 @@ impl Mul<&Row> for &Matrix {
     ///
     /// let v = Row::new(vec![7.0, 8.0, 9.0]);
     /// let result = m * v;
-    /// assert_eq!(result, Row::new(vec![50.0, 122.0])); ```
-    fn mul(self, rhs: &Row) -> Self::Output {
+    /// assert_eq!(result, Row::new(vec![50.0, 122.0]));
+    /// ```
+    fn mul(self, rhs: &Row<T>) -> Self::Output {
         let (rows_len, _) = self.get_dimensions();
-        let mut row: Row = Row::new(vec![]);
+        let mut row: Row<T> = Row::new(vec![]);
         for i in 0..rows_len {
-            row.row_elems.push(dot_product(&self[i], rhs).expect(
-                "The column of given matrix is not equal to the dimension of the given vector",
-            ));
+            row.row_elems
+                .push(bilinear_dot_product(&self[i], rhs).expect(
+                    "The column of given matrix is not equal to the dimension of the given vector",
+                ));
         }
         row
     }
 }
-impl_forward_ref_binop!(Mul, mul, Matrix, Row, Row);
-pub fn transpose(given_column_matrix: &Matrix) -> Matrix {
-    //We guarantee that matrices are nonempty
+impl_forward_ref_binop!(Mul, mul, Matrix<T>, Row<T>, Row<T> where T:Scalar);
+
+pub fn row_to_col_matrix<T: Clone>(given_column_matrix: &Matrix<T>) -> Matrix<T> {
+    if given_column_matrix.rows.is_empty() {
+        return Matrix { rows: vec![] };
+    }
+    // We guarantee that matrices are nonempty
     let number_of_cols = given_column_matrix[0].row_elems.len();
     let number_of_rows = given_column_matrix.rows.len();
-    let row_elem = vec![0.0; number_of_rows];
-    let mut required_matrix = Matrix::new(vec![row_elem; number_of_cols]).unwrap();
+    let mut result_rows: Vec<Vec<T>> = Vec::with_capacity(number_of_cols);
     for i in 0..number_of_cols {
+        let mut row = Vec::with_capacity(number_of_rows);
         for j in 0..number_of_rows {
-            required_matrix[i][j] = given_column_matrix[j][i]
+            row.push(given_column_matrix[j][i].clone());
         }
+        result_rows.push(row);
     }
-    required_matrix
+    Matrix::new(result_rows).unwrap()
 }
-impl Matrix {
+
+impl<T> Matrix<T> {
     pub fn multiply(
-        lhs: &Matrix,
-        rhs: &Matrix,
-        dot_product_func: impl Fn(&Row, &Row) -> Result<f64, DotProductError> + Send + Sync,
-    ) -> Matrix {
+        lhs: &Matrix<T>,
+        rhs: &Matrix<T>,
+        dot_product_func: impl Fn(&Row<T>, &Row<T>) -> Result<T, DotProductError> + Send + Sync,
+    ) -> Matrix<T>
+    where
+        T: Clone + Send + Sync + Scalar,
+    {
         let (_, lhs_col_len) = lhs.get_dimensions();
         let (rhs_row_len, _) = rhs.get_dimensions();
         assert_eq!(
             rhs_row_len, lhs_col_len,
             "Row number of RHS must match col number of LHS"
         );
-        let col_matrix = transpose(rhs);
+        let col_matrix = row_to_col_matrix(rhs);
 
-        let result_rows: Vec<Vec<f64>> = lhs
+        let result_rows: Vec<Vec<T>> = lhs
             .rows
             .par_iter()
             .map(|row| {
@@ -536,13 +599,24 @@ impl Matrix {
     }
 }
 
-impl Mul<&Matrix> for &Matrix {
-    type Output = Matrix;
-    fn mul(self, rhs: &Matrix) -> Self::Output {
-        Matrix::multiply(self, rhs, dot_product)
+impl<T> Mul<&Matrix<T>> for &Matrix<T>
+where
+    T: Scalar,
+{
+    type Output = Matrix<T>;
+    fn mul(self, rhs: &Matrix<T>) -> Self::Output {
+        Matrix::multiply(self, rhs, bilinear_dot_product)
     }
 }
-impl_forward_ref_binop!(Mul, mul, Matrix, Matrix, Matrix);
+impl_forward_ref_binop!(Mul, mul, Matrix<T>, Matrix<T>, Matrix<T> where T:Scalar);
+
+pub fn conjugate_matrix<T: Scalar>(matrix: &mut Matrix<T>) {
+    for row in &mut matrix.rows {
+        for elem in &mut row.row_elems {
+            *elem = elem.conj();
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -646,6 +720,33 @@ mod tests {
         m.reduced_row_echelon(&mut NoopLogger {});
 
         let expected = def_matrix![[1.0, 0.0], [0.0, 1.0],].unwrap();
+
+        assert_eq!(m, expected);
+    }
+    #[test]
+    #[cfg(feature = "complex")]
+    fn test_rref_complex_system() {
+        use num_complex::Complex;
+
+        let c = |re: f64, im: f64| Complex::new(re, im);
+
+        // System:
+        // (1 + 1i)x + (2 - 1i)y = 5 + 1i
+        // (0 + 2i)x + (1 + 3i)y = -1 + 5i
+        let mut m = def_matrix![
+            [c(1.0, 1.0), c(2.0, -1.0), c(5.0, 1.0)],
+            [c(0.0, 2.0), c(1.0, 3.0), c(-1.0, 5.0)]
+        ]
+        .unwrap();
+
+        m.reduced_row_echelon(&mut NoopLogger {});
+
+        // Solution: x = 0.25 - 1.25i, y = 1.0 + 1.5i
+        let expected = def_matrix![
+            [c(1.0, 0.0), c(0.0, 0.0), c(0.25, -1.25)],
+            [c(0.0, 0.0), c(1.0, 0.0), c(1.0, 1.5)]
+        ]
+        .unwrap();
 
         assert_eq!(m, expected);
     }

@@ -1,16 +1,18 @@
 use crate::impl_forward_ref_assign_op;
+use crate::traits::Scalar;
 use derive_more::{Deref, DerefMut};
 use std::fmt::Display;
 use std::ops::{AddAssign, DivAssign, Mul, MulAssign, SubAssign};
 use thiserror::Error;
+
 /// Represents a single row in a matrix.
 ///
-/// A `Row` is essentially a wrapper around a `Vec<f64>`, providing
+/// A `Row` is essentially a wrapper around a `Vec<T>`, providing
 /// convenient methods and operator overloads for row-specific operations
 /// like scalar multiplication, addition, and subtraction.
 ///
 /// It derives `Deref` and `DerefMut` to allow direct access to the
-/// underlying `Vec<f64>` methods.
+/// underlying `Vec<T>` methods.
 ///
 /// # Examples
 ///
@@ -21,15 +23,16 @@ use thiserror::Error;
 /// assert_eq!(row[0], 1.0);
 /// ```
 #[derive(Clone, Debug, Deref, DerefMut)]
-pub struct Row {
-    pub row_elems: Vec<f64>,
+pub struct Row<T = f64> {
+    pub row_elems: Vec<T>,
 }
-impl Row {
-    /// Creates a new `Row` from a `Vec<f64>`.
+
+impl<T> Row<T> {
+    /// Creates a new `Row` from a `Vec<T>`.
     ///
     /// # Arguments
     ///
-    /// * `columns` - A `Vec<f64>` representing the elements of the row.
+    /// * `columns` - A `Vec<T>` representing the elements of the row.
     ///
     /// # Examples
     ///
@@ -39,27 +42,35 @@ impl Row {
     /// let row = Row::new(vec![1.0, 2.0, 3.0]);
     /// assert_eq!(row.row_elems, vec![1.0, 2.0, 3.0]);
     /// ```
-    pub fn new(columns: Vec<f64>) -> Self {
+    pub fn new(columns: Vec<T>) -> Self {
         Row { row_elems: columns }
     }
 }
+
 #[derive(Error, Debug)]
 pub enum DotProductError {
     #[error("The vectors have different dimensions")]
     DimensionMismatch,
 }
-pub fn dot_product(lhs: &Row, rhs: &Row) -> Result<f64, DotProductError> {
+
+pub fn bilinear_dot_product<T>(lhs: &Row<T>, rhs: &Row<T>) -> Result<T, DotProductError>
+where
+    T: Scalar,
+{
     if lhs.row_elems.len() != rhs.row_elems.len() {
         return Err(DotProductError::DimensionMismatch);
     }
-    Ok(lhs
-        .iter()
-        .zip(rhs.iter())
-        .map(|(item1, item2)| item1 * item2)
-        .sum())
+    let mut sum = T::zero();
+    for (item1, item2) in lhs.iter().zip(rhs.iter()) {
+        sum += item1.clone() * item2.clone();
+    }
+    Ok(sum)
 }
 
-impl AddAssign<&Row> for Row {
+impl<T> AddAssign<&Row<T>> for Row<T>
+where
+    T: Clone + AddAssign<T>,
+{
     /// Performs in-place addition of another `Row` to this `Row`.
     ///
     /// This operation adds corresponding elements of the `rhs` row to `self`.
@@ -83,28 +94,31 @@ impl AddAssign<&Row> for Row {
     /// r1 += &r2;
     /// assert_eq!(r1, Row::new(vec![5.0, 7.0, 9.0]));
     /// ```
-    fn add_assign(&mut self, rhs: &Row) {
+    fn add_assign(&mut self, rhs: &Row<T>) {
         assert_eq!(
             self.row_elems.len(),
             rhs.row_elems.len(),
             "Dimension mismatch"
         );
         for (a, b) in self.row_elems.iter_mut().zip(rhs.row_elems.iter()) {
-            *a += b
+            *a += b.clone();
         }
     }
 }
-impl_forward_ref_assign_op!(AddAssign, add_assign, Row, Row);
+impl_forward_ref_assign_op!(AddAssign, add_assign, Row<T>, Row<T> where T: Clone + AddAssign<T>);
 
-impl Mul<f64> for Row {
-    type Output = Row;
+impl<T> Mul<T> for Row<T>
+where
+    T: Clone + MulAssign<T>,
+{
+    type Output = Row<T>;
     /// Performs scalar multiplication on a `Row`, returning a new `Row`.
     ///
     /// Each element in the row is multiplied by the scalar `rhs`.
     ///
     /// # Arguments
     ///
-    /// * `rhs` - The `f64` scalar to multiply by.
+    /// * `rhs` - The scalar to multiply by.
     ///
     /// # Examples
     ///
@@ -115,20 +129,45 @@ impl Mul<f64> for Row {
     /// let r2 = r1 * 2.0;
     /// assert_eq!(r2, Row::new(vec![2.0, 4.0, 6.0]));
     /// ```
-    fn mul(mut self, rhs: f64) -> Self::Output {
+    fn mul(mut self, rhs: T) -> Self::Output {
         self *= rhs;
         self
     }
 }
 
-impl MulAssign<f64> for Row {
+impl<T> Mul<&T> for Row<T>
+where
+    T: Clone + MulAssign<T>,
+{
+    type Output = Row<T>;
+    fn mul(mut self, rhs: &T) -> Self::Output {
+        self *= rhs;
+        self
+    }
+}
+
+impl<T> MulAssign<T> for Row<T>
+where
+    T: Clone + MulAssign<T>,
+{
+    fn mul_assign(&mut self, rhs: T) {
+        for elem in &mut self.row_elems {
+            *elem *= rhs.clone();
+        }
+    }
+}
+
+impl<T> MulAssign<&T> for Row<T>
+where
+    T: Clone + MulAssign<T>,
+{
     /// Performs in-place scalar multiplication on this `Row`.
     ///
     /// Each element in the row is multiplied by the scalar `rhs`.
     ///
     /// # Arguments
     ///
-    /// * `rhs` - The `f64` scalar to multiply by.
+    /// * `rhs` - The scalar to multiply by.
     ///
     /// # Examples
     ///
@@ -139,14 +178,17 @@ impl MulAssign<f64> for Row {
     /// r1 *= 2.0;
     /// assert_eq!(r1, Row::new(vec![2.0, 4.0, 6.0]));
     /// ```
-    fn mul_assign(&mut self, rhs: f64) {
-        for i in 0..self.row_elems.len() {
-            self.row_elems[i] *= rhs;
+    fn mul_assign(&mut self, rhs: &T) {
+        for elem in &mut self.row_elems {
+            *elem *= rhs.clone();
         }
     }
 }
 
-impl SubAssign<&Row> for Row {
+impl<T> SubAssign<&Row<T>> for Row<T>
+where
+    T: Clone + SubAssign<T>,
+{
     /// Performs in-place subtraction of another `Row` from this `Row`.
     ///
     /// This operation subtracts corresponding elements of the `rhs` row from `self`.
@@ -170,26 +212,45 @@ impl SubAssign<&Row> for Row {
     /// r1 -= &r2;
     /// assert_eq!(r1, Row::new(vec![4.0, 5.0, 6.0]));
     /// ```
-    fn sub_assign(&mut self, rhs: &Row) {
-        for i in 0..self.row_elems.len() {
-            self.row_elems[i] -= rhs.row_elems[i];
+    fn sub_assign(&mut self, rhs: &Row<T>) {
+        assert_eq!(
+            self.row_elems.len(),
+            rhs.row_elems.len(),
+            "Dimension mismatch"
+        );
+        for (a, b) in self.row_elems.iter_mut().zip(rhs.row_elems.iter()) {
+            *a -= b.clone();
         }
     }
 }
-impl_forward_ref_assign_op!(SubAssign, sub_assign, Row, Row);
+impl_forward_ref_assign_op!(SubAssign, sub_assign, Row<T>, Row<T> where T: Clone + SubAssign<T>);
 
-impl DivAssign<f64> for Row {
+impl<T> DivAssign<T> for Row<T>
+where
+    T: Clone + DivAssign<T>,
+{
+    fn div_assign(&mut self, rhs: T) {
+        for elem in &mut self.row_elems {
+            *elem /= rhs.clone();
+        }
+    }
+}
+
+impl<T> DivAssign<&T> for Row<T>
+where
+    T: Clone + DivAssign<T>,
+{
     /// Performs in-place scalar division on this `Row`.
     ///
     /// Each element in the row is divided by the scalar `rhs`.
     ///
     /// # Arguments
     ///
-    /// * `rhs` - The `f64` scalar to divide by.
+    /// * `rhs` - The scalar to divide by.
     ///
     /// # Panics
     ///
-    /// Panics if `rhs` is zero.
+    /// Panics if `rhs` is zero (for types that panic on zero division).
     ///
     /// # Examples
     ///
@@ -200,12 +261,14 @@ impl DivAssign<f64> for Row {
     /// r1 /= 2.0;
     /// assert_eq!(r1, Row::new(vec![1.0, 2.0, 3.0]));
     /// ```
-    fn div_assign(&mut self, rhs: f64) {
-        *self *= 1.0 / rhs;
+    fn div_assign(&mut self, rhs: &T) {
+        for elem in &mut self.row_elems {
+            *elem /= rhs.clone();
+        }
     }
 }
 
-impl Display for Row {
+impl<T: Display> Display for Row<T> {
     /// Formats the row for display.
     ///
     /// The elements of the row are displayed within square brackets,
@@ -230,10 +293,11 @@ impl Display for Row {
         write!(f, "]") // End the bracket
     }
 }
-impl IntoIterator for Row {
-    type Item = f64;
+
+impl<T> IntoIterator for Row<T> {
+    type Item = T;
     type IntoIter = std::vec::IntoIter<Self::Item>;
-    /// Consumes the `Row` and returns an iterator over its `f64` elements.
+    /// Consumes the `Row` and returns an iterator over its elements.
     ///
     /// This allows a `Row` to be used in `for` loops and other iterator contexts.
     ///
@@ -253,7 +317,8 @@ impl IntoIterator for Row {
         self.row_elems.into_iter()
     }
 }
-impl PartialEq for Row {
+
+impl<T: PartialEq> PartialEq for Row<T> {
     /// Compares two `Row`s for equality.
     ///
     /// Two rows are considered equal if they have the same number of columns
@@ -280,11 +345,13 @@ impl PartialEq for Row {
         if self.row_elems.len() != other.row_elems.len() {
             return false;
         }
-        // Direct comparison for f64, consider using an epsilon-based comparison for robustness
-        // if floating point inaccuracies are a concern.
         self.iter().zip(other.row_elems.iter()).all(|(a, b)| a == b)
     }
 }
+
+impl<T: Eq> Eq for Row<T> {}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

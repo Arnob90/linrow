@@ -1,31 +1,40 @@
-use crate::matrix::Matrix;
+use crate::{matrix::Matrix, traits::Scalar};
+use num_traits::{One, Zero};
 
-///This struct is used to log row operations in form of elementary matrices
-pub trait MatrixLogger {
-    fn log(&mut self, given_elementary_matrix: Matrix);
+/// This trait is used to log row operations in form of elementary matrices
+pub trait MatrixLogger<T = f64> {
+    fn log(&mut self, given_elementary_matrix: Matrix<T>);
 }
+
 #[derive(Debug)]
-pub struct InvertMatrixLogger {
-    result_so_far: Matrix,
+pub struct InvertMatrixLogger<T = f64> {
+    result_so_far: Matrix<T>,
 }
-impl MatrixLogger for InvertMatrixLogger {
-    fn log(&mut self, given_elementary_matrix: Matrix) {
-        self.result_so_far = given_elementary_matrix * &self.result_so_far;
+
+impl<T> MatrixLogger<T> for InvertMatrixLogger<T>
+where
+    T: Scalar,
+{
+    fn log(&mut self, given_elementary_matrix: Matrix<T>) {
+        self.result_so_far = &given_elementary_matrix * &self.result_so_far;
     }
 }
-impl InvertMatrixLogger {
-    pub fn with_dimensions(dimension: usize) -> InvertMatrixLogger {
+
+impl<T: Zero + One + Clone> InvertMatrixLogger<T> {
+    pub fn with_dimensions(dimension: usize) -> InvertMatrixLogger<T> {
         InvertMatrixLogger {
             result_so_far: Matrix::identity_matrix(dimension).unwrap(),
         }
     }
-    pub fn inverse_matrix(self) -> Matrix {
+    pub fn inverse_matrix(self) -> Matrix<T> {
         self.result_so_far
     }
 }
+
 #[derive(Debug)]
 pub struct NoopLogger {}
-impl MatrixLogger for NoopLogger {
+
+impl<T> MatrixLogger<T> for NoopLogger {
     #[inline]
-    fn log(&mut self, _: Matrix) {}
+    fn log(&mut self, _: Matrix<T>) {}
 }
