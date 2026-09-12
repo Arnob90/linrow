@@ -22,7 +22,23 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-linrow = "0.4.1" # Or the latest version
+linrow = "1.5.2" # Or the latest version
+```
+
+Or just use
+
+```fish
+cargo add linrow
+```
+
+Feature flags:
+
+- Complex
+
+To install with complex support:
+
+```fish
+cargo add linrow --features complex
 ```
 
 ## Usage
@@ -56,6 +72,27 @@ fn main() {
     // [[1, 0, 0, 2],
     //  [0, 1, 0, -1],
     //  [0, 0, 1, 3]]
+}
+```
+
+With the complex feature flag set, it also now supports complex numbers. Comes built in with num-complex, but it is very easy to add your complex number implementation. Check traits.rs, especially docs for Scalar, to understand how.
+
+```rust
+fn main() {
+    let c = |re: f64, im: f64| Complex::new(re, im);
+
+    // System:
+    // (1 + 1i)x + (2 - 1i)y = 5 + 1i
+    // (0 + 2i)x + (1 + 3i)y = -1 + 5i
+    let mut matrix = def_matrix![
+        [c(1.0, 1.0), c(2.0, -1.0), c(5.0, 1.0)],
+        [c(0.0, 2.0), c(1.0, 3.0), c(-1.0, 5.0)]
+    ].unwrap();
+
+    matrix.reduced_row_echelon(&mut linrow::NoopLogger {});
+
+    println!("Complex Matrix in RREF:\n{}", matrix);
+    // Solution: x = 0.25 - 1.25i, y = 1.0 + 1.5i
 }
 ```
 

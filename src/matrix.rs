@@ -728,26 +728,29 @@ mod tests {
     fn test_rref_complex_system() {
         use num_complex::Complex;
 
+        // Helper closure to cleanly construct double-precision complex numbers
         let c = |re: f64, im: f64| Complex::new(re, im);
 
-        // System:
-        // (1 + 1i)x + (2 - 1i)y = 5 + 1i
-        // (0 + 2i)x + (1 + 3i)y = -1 + 5i
+        // Augmented matrix [A | b] representing the complex linear system
         let mut m = def_matrix![
             [c(1.0, 1.0), c(2.0, -1.0), c(5.0, 1.0)],
             [c(0.0, 2.0), c(1.0, 3.0), c(-1.0, 5.0)]
         ]
         .unwrap();
 
+        // Perform in-place RREF reduction without progress logging
         m.reduced_row_echelon(&mut NoopLogger {});
 
-        // Solution: x = 0.25 - 1.25i, y = 1.0 + 1.5i
+        // Expected identity-augmented form [I | x] corresponding to:
+        // x = 0.25 - 1.25i
+        // y = 1.00 + 1.50i
         let expected = def_matrix![
             [c(1.0, 0.0), c(0.0, 0.0), c(0.25, -1.25)],
             [c(0.0, 0.0), c(1.0, 0.0), c(1.0, 1.5)]
         ]
         .unwrap();
 
+        // Assert exact equality between the reduced matrix and expected RREF solution
         assert_eq!(m, expected);
     }
 
