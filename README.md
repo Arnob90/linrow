@@ -1,4 +1,4 @@
-# matrix-solver-lib
+# Linrow
 
 [![Crates.io](https://img.shields.io/crates/v/linrow.svg)](https://crates.io/crates/linrow)
 [![Docs.rs](https://docs.rs/linrow/badge.svg)](https://docs.rs/linrow)
@@ -15,6 +15,7 @@ A Rust library for performing various matrix operations, including solving syste
 - **Matrix-Vector Multiplication**: Supports multiplication of a `Matrix` by a `Row` (interpreted as a column vector).
 - **Error Handling**: Robust error handling for invalid matrix creations.
 - **Floating Point Precision**: Uses a small `EPSILON` for stable floating-point comparisons.
+- **Orthonormal checking**: Checks if a basis is orthonormal
 
 ## Installation
 
@@ -22,7 +23,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-linrow = "1.5.2" # Or the latest version
+linrow = "2.5.2" # Or the latest version
 ```
 
 Or just use
@@ -34,6 +35,7 @@ cargo add linrow
 Feature flags:
 
 - Complex
+- Rational
 
 To install with complex support:
 
@@ -95,6 +97,8 @@ fn main() {
     // Solution: x = 0.25 - 1.25i, y = 1.0 + 1.5i
 }
 ```
+
+Likewise it also can solve systems with rational numbers, and it comes built in with num-rational
 
 For more detailed examples and API documentation, please refer to the [docs.rs page](https://docs.rs/linrow).
 

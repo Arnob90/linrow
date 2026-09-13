@@ -1,18 +1,13 @@
 use crate::impl_real_scalar;
-use num_traits::{Float, One, Zero};
+use num_traits::{One, Zero};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-/// Defines a magnitude metric for elements of a scalar field.
+/// Trait representing an element that can be checked for pivot eligibility in Gaussian elimination.
 ///
-/// This trait abstracts absolute value and norm operations, mapping
-/// scalar entries to an underlying real floating-point type for distance
-/// metrics, pivoting weight calculations, and noise evaluation.
-pub trait HasNorm {
-    /// The real floating-point type representing the magnitude/norm.
-    type Real: Float;
-
-    /// Computes the norm (or absolute value) of the scalar.
-    fn norm(&self) -> Self::Real;
+/// Types with approximate floating point behavior (like `f64`, `f32`) should check against an epsilon,
+/// while exact types (like integers or rational numbers) can check for exact non-zero equality.
+pub trait PivotElement {
+    fn is_pivot(&self) -> bool;
 }
 
 /// Defines complex conjugation for scalar field elements.
@@ -22,6 +17,18 @@ pub trait HasNorm {
 pub trait HasConj {
     /// Returns the complex conjugate of `self`.
     fn conj(&self) -> Self;
+}
+
+pub trait Metric {
+    fn is_near(&self, other: &Self) -> bool;
+}
+
+// Default 1: Anything with a norm/magnitude (f32, f64, Complex)
+impl<T: Metric + Zero> PivotElement for T {
+    #[inline]
+    fn is_pivot(&self) -> bool {
+        !self.is_near(&T::zero())
+    }
 }
 
 /// Trait alias for scalar types usable in `Row` and `Matrix`.
@@ -41,16 +48,12 @@ pub trait Scalar:
     + SubAssign
     + MulAssign
     + DivAssign
-    + HasNorm
     + Neg<Output = Self>
     + Send
     + Sync
+    + PivotElement
     + HasConj
 {
-    /// Computes the magnitude of the difference between two scalars $\|a - b\|$.
-    ///
-    /// Used primarily for numerical stability checks and residual evaluations.
-    fn norm_diff(&self, other: &Self) -> Self::Real;
 }
 
 // Blanket implementation for any type matching the full suite of scalar bounds.
@@ -69,18 +72,14 @@ where
         + SubAssign
         + MulAssign
         + DivAssign
-        + HasNorm
         + Neg<Output = T>
         + Send
+        + Metric
         + Sync
         + HasConj,
     for<'a> &'a T: Sub<&'a T, Output = T>,
     for<'a> &'a T: Add<&'a T, Output = T>,
 {
-    #[inline]
-    fn norm_diff(&self, other: &Self) -> Self::Real {
-        (self - other).norm()
-    }
 }
 
 // Instantiate HasNorm and HasConj for standard primitive floating-point types (f64, f32)

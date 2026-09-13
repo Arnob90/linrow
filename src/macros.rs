@@ -101,17 +101,14 @@ macro_rules! def_matrix {
     };
 }
 
-// Declarative macro to implement Scalar for real scalar types
 #[macro_export]
-// Macro for standard real float types
 macro_rules! impl_real_scalar {
     ($($t:ty),*) => {
         $(
-            impl HasNorm for $t {
-                type Real = $t;
+            impl Metric for $t {
                 #[inline(always)]
-                fn norm(&self) -> Self::Real {
-                    self.abs()
+                fn is_near(&self, other: &Self) -> bool {
+                    (*self - *other).abs() <= $crate::utils::get_generic_eps()
                 }
             }
 
@@ -119,30 +116,6 @@ macro_rules! impl_real_scalar {
                 #[inline(always)]
                 fn conj(&self) -> Self {
                     *self
-                }
-            }
-        )*
-    };
-}
-
-// Optional macro for num-complex when the feature flag is enabled
-#[macro_export]
-#[cfg(feature = "complex")]
-macro_rules! impl_complex_scalar {
-    ($($t:ty),*) => {
-        $(
-            impl HasNorm for num_complex::Complex<$t> {
-                type Real = $t;
-                #[inline(always)]
-                fn norm(&self) -> Self::Real {
-                    ComplexFloat::abs(*self)
-                }
-            }
-
-            impl HasConj for num_complex::Complex<$t> {
-                #[inline(always)]
-                fn conj(&self) -> Self {
-                    ComplexFloat::conj(*self)
                 }
             }
         )*

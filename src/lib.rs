@@ -8,6 +8,7 @@ mod constants;
 pub mod macros;
 pub mod matrix;
 pub mod operation_logger;
+pub mod rational;
 pub mod row;
 pub mod traits;
 pub mod utils;

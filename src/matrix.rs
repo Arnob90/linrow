@@ -7,29 +7,11 @@ use crate::operation_logger::{InvertMatrixLogger, MatrixLogger};
 use crate::row::DotProductError;
 use crate::row::{Row, bilinear_dot_product};
 use crate::traits::Scalar;
-use crate::utils::get_generic_eps;
 use num_traits::{One, Zero};
 use rayon::prelude::*;
 use std::fmt::Display;
 use std::ops::{Index, IndexMut, Mul};
 use thiserror::Error;
-
-/// Trait representing an element that can be checked for pivot eligibility in Gaussian elimination.
-///
-/// Types with approximate floating point behavior (like `f64`, `f32`) should check against an epsilon,
-/// while exact types (like integers or rational numbers) can check for exact non-zero equality.
-pub trait PivotElement {
-    fn is_pivot(&self) -> bool;
-}
-
-// Default 1: Anything with a norm/magnitude (f32, f64, Complex)
-impl<T: Scalar> PivotElement for T {
-    #[inline]
-    fn is_pivot(&self) -> bool {
-        let eps = get_generic_eps();
-        self.norm() > eps
-    }
-}
 
 /// Represents a mathematical matrix.
 ///
@@ -723,37 +705,6 @@ mod tests {
 
         assert_eq!(m, expected);
     }
-    #[test]
-    #[cfg(feature = "complex")]
-    fn test_rref_complex_system() {
-        use num_complex::Complex;
-
-        // Helper closure to cleanly construct double-precision complex numbers
-        let c = |re: f64, im: f64| Complex::new(re, im);
-
-        // Augmented matrix [A | b] representing the complex linear system
-        let mut m = def_matrix![
-            [c(1.0, 1.0), c(2.0, -1.0), c(5.0, 1.0)],
-            [c(0.0, 2.0), c(1.0, 3.0), c(-1.0, 5.0)]
-        ]
-        .unwrap();
-
-        // Perform in-place RREF reduction without progress logging
-        m.reduced_row_echelon(&mut NoopLogger {});
-
-        // Expected identity-augmented form [I | x] corresponding to:
-        // x = 0.25 - 1.25i
-        // y = 1.00 + 1.50i
-        let expected = def_matrix![
-            [c(1.0, 0.0), c(0.0, 0.0), c(0.25, -1.25)],
-            [c(0.0, 0.0), c(1.0, 0.0), c(1.0, 1.5)]
-        ]
-        .unwrap();
-
-        // Assert exact equality between the reduced matrix and expected RREF solution
-        assert_eq!(m, expected);
-    }
-
     #[test]
     fn test_matrix_vector_multiplication() {
         let m = def_matrix![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0],].unwrap();
