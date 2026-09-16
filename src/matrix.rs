@@ -592,6 +592,15 @@ where
 }
 impl_forward_ref_binop!(Mul, mul, Matrix<T>, Matrix<T>, Matrix<T> where T:Scalar);
 
+impl<T: Scalar> From<Row<T>> for Matrix<T> {
+    fn from(value: Row<T>) -> Self {
+        let mut rows = vec![];
+        for item in value {
+            rows.push(Row::new(vec![item]));
+        }
+        Matrix::from_rows(rows).unwrap()
+    }
+}
 pub fn conjugate_matrix<T: Scalar>(matrix: &mut Matrix<T>) {
     for row in &mut matrix.rows {
         for elem in &mut row.row_elems {
