@@ -65,6 +65,51 @@ macro_rules! impl_forward_ref_binop {
 }
 
 #[macro_export]
+macro_rules! impl_forward_ref_binop_scalar {
+    (
+        $trait:ident,
+        $method:ident,
+        $lhs:ident <$($lt:ident),*>,
+        $rhs:ty,
+        $output:ident <$($ot:ident),*>
+        $(where $($bound:tt)+)?
+    ) => {
+        // 1. Owned * Owned
+        impl<$($lt),*> $trait<$rhs> for $lhs<$($lt),*>
+        $(where $($bound)+)?
+        {
+            type Output = $output<$($ot),*>;
+            #[inline]
+            fn $method(self, rhs: $rhs) -> Self::Output {
+                (&self).$method(&rhs)
+            }
+        }
+
+        // 2. Owned * Reference
+        impl<'b, $($lt),*> $trait<&'b $rhs> for $lhs<$($lt),*>
+        $(where $($bound)+)?
+        {
+            type Output = $output<$($ot),*>;
+            #[inline]
+            fn $method(self, rhs: &'b $rhs) -> Self::Output {
+                (&self).$method(rhs)
+            }
+        }
+
+        // 3. Reference * Owned
+        impl<'a, $($lt),*> $trait<$rhs> for &'a $lhs<$($lt),*>
+        $(where $($bound)+)?
+        {
+            type Output = $output<$($ot),*>;
+            #[inline]
+            fn $method(self, rhs: $rhs) -> Self::Output {
+                self.$method(&rhs)
+            }
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! impl_forward_ref_assign_op {
     ($trait:ident, $method:ident, $lhs:ident <$($lt:ident),*>, $rhs:ident <$($rt:ident),*> $(where $($bound:tt)+)?) => {
         // Forward: Owned RHS -> Reference RHS

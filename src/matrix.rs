@@ -601,6 +601,16 @@ impl<T: Scalar> From<Row<T>> for Matrix<T> {
         Matrix::from_rows(rows).unwrap()
     }
 }
+impl<T: Scalar> Mul<T> for Matrix<T> {
+    type Output = Matrix<T>;
+
+    fn mul(mut self, rhs: T) -> Self::Output {
+        for row in &mut self.rows {
+            *row *= &rhs; // In-place scalar multiplication!
+        }
+        self
+    }
+}
 pub fn conjugate_matrix<T: Scalar>(matrix: &mut Matrix<T>) {
     for row in &mut matrix.rows {
         for elem in &mut row.row_elems {
