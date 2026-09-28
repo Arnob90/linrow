@@ -1,8 +1,8 @@
-use crate::impl_forward_ref_assign_op;
 use crate::traits::Scalar;
+use crate::{impl_forward_ref_assign_op, impl_forward_ref_binop, impl_forward_ref_binop_scalar};
 use derive_more::{Deref, DerefMut};
 use std::fmt::Display;
-use std::ops::{AddAssign, DivAssign, Mul, MulAssign, SubAssign};
+use std::ops::{Add, AddAssign, DivAssign, Mul, MulAssign, Sub, SubAssign};
 use thiserror::Error;
 
 /// Represents a single row in a matrix.
@@ -107,44 +107,31 @@ where
 }
 impl_forward_ref_assign_op!(AddAssign, add_assign, Row<T>, Row<T> where T: Clone + AddAssign<T>);
 
-impl<T> Mul<T> for Row<T>
+impl<T> Add<&Row<T>> for &Row<T>
 where
-    T: Clone + MulAssign<T>,
+    T: Clone + AddAssign,
 {
     type Output = Row<T>;
-    /// Performs scalar multiplication on a `Row`, returning a new `Row`.
-    ///
-    /// Each element in the row is multiplied by the scalar `rhs`.
-    ///
-    /// # Arguments
-    ///
-    /// * `rhs` - The scalar to multiply by.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use linrow::row::Row;
-    ///
-    /// let r1 = Row::new(vec![1.0, 2.0, 3.0]);
-    /// let r2 = r1 * 2.0;
-    /// assert_eq!(r2, Row::new(vec![2.0, 4.0, 6.0]));
-    /// ```
-    fn mul(mut self, rhs: T) -> Self::Output {
-        self *= rhs;
-        self
+    fn add(self, rhs: &Row<T>) -> Self::Output {
+        let mut cloned_self = self.clone();
+        cloned_self += rhs;
+        cloned_self
     }
 }
+impl_forward_ref_binop!(Add,add,Row<T>,Row<T>,Row<T> where T:Clone+AddAssign<T>);
 
-impl<T> Mul<&T> for Row<T>
-where
-    T: Clone + MulAssign<T>,
-{
+impl<T: MulAssign + Clone> Mul<&T> for &Row<T> {
     type Output = Row<T>;
-    fn mul(mut self, rhs: &T) -> Self::Output {
-        self *= rhs;
-        self
+    fn mul(self, rhs: &T) -> Self::Output {
+        let mut res = self.clone();
+        res *= rhs; // Uses Row's MulAssign<&T>, which uses T::MulAssign!
+        res
     }
 }
+impl_forward_ref_binop_scalar!(
+    Mul, mul, Row<T>, T, Row<T>
+    where T:MulAssign+Clone
+);
 
 impl<T> MulAssign<T> for Row<T>
 where
@@ -224,6 +211,19 @@ where
     }
 }
 impl_forward_ref_assign_op!(SubAssign, sub_assign, Row<T>, Row<T> where T: Clone + SubAssign<T>);
+
+impl<T> Sub<&Row<T>> for &Row<T>
+where
+    T: SubAssign + Clone,
+{
+    type Output = Row<T>;
+    fn sub(self, rhs: &Row<T>) -> Self::Output {
+        let mut cloned = self.clone();
+        cloned -= rhs;
+        cloned
+    }
+}
+impl_forward_ref_binop!(Sub,sub,Row<T>,Row<T>,Row<T> where T:SubAssign+Clone);
 
 impl<T> DivAssign<T> for Row<T>
 where

@@ -1,16 +1,16 @@
 #[allow(unused_imports)]
 use crate::def_matrix;
-use crate::impl_forward_ref_binop;
 #[allow(unused_imports)]
 use crate::operation_logger::NoopLogger;
 use crate::operation_logger::{InvertMatrixLogger, MatrixLogger};
 use crate::row::DotProductError;
 use crate::row::{Row, bilinear_dot_product};
 use crate::traits::Scalar;
+use crate::{impl_forward_ref_binop, impl_forward_ref_binop_scalar};
 use num_traits::{One, Zero};
 use rayon::prelude::*;
 use std::fmt::Display;
-use std::ops::{Index, IndexMut, Mul};
+use std::ops::{Add, Index, IndexMut, Mul, Sub};
 use thiserror::Error;
 
 /// Represents a mathematical matrix.
@@ -601,16 +601,48 @@ impl<T: Scalar> From<Row<T>> for Matrix<T> {
         Matrix::from_rows(rows).unwrap()
     }
 }
-impl<T: Scalar> Mul<T> for Matrix<T> {
+impl<T: Scalar> Mul<&T> for &Matrix<T>
+where
+    T: Scalar,
+{
     type Output = Matrix<T>;
 
-    fn mul(mut self, rhs: T) -> Self::Output {
-        for row in &mut self.rows {
-            *row *= &rhs; // In-place scalar multiplication!
-        }
-        self
+    fn mul(self, rhs: &T) -> Self::Output {
+        let req_rows: Vec<_> = self.rows.iter().map(|r| r * rhs).collect();
+        Matrix::from_rows(req_rows).unwrap()
     }
 }
+
+impl_forward_ref_binop_scalar!(
+    Mul, mul, Matrix<T>, T, Matrix<T>
+    where T:Scalar
+);
+
+impl<T: Scalar> std::ops::Sub<&Matrix<T>> for &Matrix<T> {
+    type Output = Matrix<T>;
+
+    fn sub(self, rhs: &Matrix<T>) -> Self::Output {
+        assert_eq!(
+            self.get_dimensions(),
+            rhs.get_dimensions(),
+            "Matrix dimension mismatch during subtraction"
+        );
+
+        let res_rows = self
+            .rows
+            .iter()
+            .zip(&rhs.rows)
+            .map(|(r1, r2)| r1 - r2) // Single pass, 1 allocation, native subtraction
+            .collect();
+
+        Matrix::from_rows(res_rows).unwrap()
+    }
+}
+
+impl_forward_ref_binop_scalar!(
+    Sub, sub, Matrix<T>, Matrix<T>, Matrix<T>
+    where T:Scalar
+);
 pub fn conjugate_matrix<T: Scalar>(matrix: &mut Matrix<T>) {
     for row in &mut matrix.rows {
         for elem in &mut row.row_elems {
@@ -618,6 +650,28 @@ pub fn conjugate_matrix<T: Scalar>(matrix: &mut Matrix<T>) {
         }
     }
 }
+
+impl<T> Add<&Matrix<T>> for &Matrix<T>
+where
+    T: Scalar,
+{
+    type Output = Matrix<T>;
+    fn add(self, rhs: &Matrix<T>) -> Self::Output {
+        let lhs_dims = self.get_dimensions();
+        let rhs_dims = rhs.get_dimensions();
+        assert_eq!(lhs_dims, rhs_dims);
+        let mut req: Matrix<T> = Matrix::with_dimensions(lhs_dims.0, lhs_dims.1).unwrap();
+        let res_rows: Vec<Row<T>> = self
+            .rows
+            .iter()
+            .zip(&rhs.rows)
+            .map(|(r1, r2)| r1 + r2)
+            .collect();
+        req.rows = res_rows;
+        req
+    }
+}
+impl_forward_ref_binop!(Add,add,Matrix<T>,Matrix<T>,Matrix<T> where T:Scalar);
 
 #[cfg(test)]
 mod tests {

@@ -79,6 +79,7 @@ where
         + HasConj,
     for<'a> &'a T: Sub<&'a T, Output = T>,
     for<'a> &'a T: Add<&'a T, Output = T>,
+    for<'a> &'a T: Mul<&'a T, Output = T>,
 {
 }
 

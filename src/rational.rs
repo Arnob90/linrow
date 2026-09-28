@@ -31,6 +31,7 @@ mod tests {
     use crate::def_matrix;
     use crate::matrix::Matrix;
     use crate::operation_logger::NoopLogger;
+    use num_rational::Ratio;
     use num_rational::Rational64;
     #[test]
     #[cfg(feature = "rational")]
@@ -43,5 +44,14 @@ mod tests {
         let expected = def_matrix![[i(1), i(0), r(6, 11)], [i(0), i(1), r(37, 22)]].unwrap();
 
         assert_eq!(m, expected);
+    }
+    #[test]
+    #[cfg(feature = "rational")]
+    fn test_subtraction() {
+        let r = |n: i64, d: i64| Rational64::new(n, d);
+        let m = def_matrix![[r(1, 2), r(1, 3), r(5, 6)], [r(2, 1), r(-1, 2), r(1, 4)]].unwrap();
+        let res = &m - &m;
+        let zero_matrix: Matrix<Ratio<i64>> = Matrix::with_dimensions(2, 3).unwrap();
+        assert_eq!(res, zero_matrix);
     }
 }
