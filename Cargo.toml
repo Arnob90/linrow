@@ -1,6 +1,6 @@
 [package]
 name = "linrow"
-version = "2.7.0"
+version = "2.8.1"
 edition = "2024"
 description = "A matrix row reduction library"
 license = "MIT"

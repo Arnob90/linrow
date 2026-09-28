@@ -4,6 +4,7 @@
 //! such as creating matrices, performing row operations, and solving linear systems.
 
 pub mod complex;
+pub mod complex_rational;
 mod constants;
 pub mod macros;
 pub mod matrix;
